@@ -1,6 +1,7 @@
 /**
- * SANGUINE_RUNNER — Phase 2: Core Combat, Stagger/Executions, Object-Pooled VFX/Gibs,
- * Batched Damage Numbers, Interleaved Boid Husks, & Initial Arsenal (Jackal/Casull + Katana)
+ * SANGUINE_RUNNER — Full Integrated 120Hz Movement, Single-Weapon Combat,
+ * Differentiated Melee Geometry, Wave Director (Danger 0-5), Pooled Vitae Orbs,
+ * Per-Card Reroll Blood Altar, & Autonomous Familiars
  */
 
 import * as THREE from '../vendor/three.module.js';
@@ -9,14 +10,26 @@ import { KinematicController } from './physics/KinematicController.js';
 import { MovementConfig, MovementState, WallSide } from './physics/MovementConfig.js';
 import { CameraRig } from './core/CameraRig.js';
 import { InputManager } from './core/InputManager.js';
-import { ArenaSpawnPoints, buildGreyboxCollisionWorld } from './world/ArenaGeometryData.js';
+import {
+  ArenaSpawnPoints,
+  buildGreyboxCollisionWorld,
+  getModularArenaById,
+} from './world/ArenaGeometryData.js';
 import { ArenaBuilder } from './world/ArenaBuilder.js';
 import { AudioManager } from './audio/AudioManager.js';
 import { VFXAndPoolManager } from './combat/VFXAndPoolManager.js';
-import { TargetHuskManager } from './combat/TargetHuskManager.js';
+import { TargetHuskManager, ArchetypeStats } from './combat/TargetHuskManager.js';
 import { WeaponSystem } from './combat/WeaponSystem.js';
 import { WeaponSlot } from './combat/WeaponDefinitions.js';
+import { CharacterId, WeaponId } from './combat/CharacterCatalog.js';
 import { ViewmodelRenderer } from './rendering/ViewmodelRenderer.js';
+import { PostProcessingPass } from './rendering/PostProcessingPass.js';
+import { HudAndAltarUI } from './rendering/HudAndAltarUI.js';
+import { WaveDirector } from './ai/WaveDirector.js';
+import { FamiliarSystem } from './ai/FamiliarSystem.js';
+import { ScalingEngine } from './progression/ScalingEngine.js';
+import { BloodOrbManager } from './progression/BloodOrbManager.js';
+import { AltarDraftEngine } from './progression/AltarDraftEngine.js';
 
 class SanguineGreyboxApp {
   constructor() {
@@ -56,55 +69,146 @@ class SanguineGreyboxApp {
     this.controller.yaw = initialSpawn.yaw;
     this.cameraRig = new CameraRig(this.controller);
 
-    // 4. Initialize Phase 2 Combat Systems (Audio, Object-Pooled VFX/Gibs, Swarm Husks, Weapons, Viewmodels)
+    // 4. Initialize Audio, VFX Pools, Scaling Engine, & Pooled Blood Orbs
     this.audio = new AudioManager();
     this.vfx = new VFXAndPoolManager({
       THREE,
       scene: this.scene,
       labelsContainer: this.damageLabelsContainer,
     });
+    this.scaling = new ScalingEngine();
+    this.bloodOrbs = new BloodOrbManager({
+      THREE,
+      scene: this.scene,
+      audio: this.audio,
+      onVitaeCollected: () => {
+        if (this.weaponSystem) {
+          this.weaponSystem.blood = Math.min(
+            this.weaponSystem.maxBlood,
+            this.weaponSystem.blood + 2
+          );
+        }
+      },
+    });
+
+    // 5. Initialize Swarm Enemy Husk Manager (spawning Vitae Blood Orbs on kill)
     this.huskManager = new TargetHuskManager({
       vfx: this.vfx,
       audio: this.audio,
       THREE,
       scene: this.scene,
+      onEnemyKilled: ({ x, y, z, archetype, isElite }) => {
+        const archCfg = ArchetypeStats[archetype] || ArchetypeStats[0];
+        const baseVal = archCfg.vitaeDrop || 4;
+        const dangerMult = this.waveDirector
+          ? this.waveDirector.dangerConfig.vitaeRewardMultiplier
+          : 1.0;
+        const val = Math.round(baseVal * (isElite ? 3.0 : 1.0) * dangerMult);
+        this.bloodOrbs.spawnOrb(x, y + 0.65, z, val);
+      },
+      onPlayerDamaged: (dmg) => {
+        if (this.weaponSystem) {
+          this.weaponSystem.applyPlayerDamage(dmg);
+        }
+      },
     });
-    this.huskManager.populateArenaWave();
 
+    // 6. Initialize Weapon System & Viewmodels
     this.weaponSystem = new WeaponSystem({
       controller: this.controller,
       huskManager: this.huskManager,
       vfx: this.vfx,
       audio: this.audio,
       cameraRig: this.cameraRig,
+      scaling: this.scaling,
     });
     this.viewmodel = new ViewmodelRenderer(this.camera, this.weaponSystem);
+    this.postProcessing = new PostProcessingPass({
+      overlayElement: document.getElementById('hitstop-flash'),
+    });
 
-    // 5. Input Manager & Teleport Hotkeys
+    // 7. Initialize Wave Director, Blood Altar Draft Engine, & Autonomous Familiars
+    this.altarEngine = new AltarDraftEngine({
+      scaling: this.scaling,
+      bloodOrbs: this.bloodOrbs,
+      audio: this.audio,
+    });
+
+    this.waveDirector = new WaveDirector({
+      huskManager: this.huskManager,
+      controller: this.controller,
+      weaponSystem: this.weaponSystem,
+      bloodOrbManager: this.bloodOrbs,
+      onWaveComplete: (completedWave) => {
+        this.altarEngine.openAltarForWave(completedWave);
+        this.hudAndAltarUI.renderAltar();
+      },
+    });
+
+    this.familiarSystem = new FamiliarSystem({
+      huskManager: this.huskManager,
+      scaling: this.scaling,
+      bloodOrbs: this.bloodOrbs,
+      vfx: this.vfx,
+      THREE,
+      scene: this.scene,
+    });
+
+    // Default startup run configuration
+    this.startConfiguredRun({
+      characterId: CharacterId.NOSFERATU_SOVEREIGN,
+      weaponId: WeaponId.OCCULT_SCYTHE,
+      dangerTier: 0,
+      arenaId: 'CATHEDRAL_NAVE',
+      lockPointer: false,
+    });
+
+    // 8. Initialize Loadout & Blood Altar UI
+    const lockOverlay = document.getElementById('pointer-lock-overlay');
+    this.hudAndAltarUI = new HudAndAltarUI({
+      altarEngine: this.altarEngine,
+      bloodOrbs: this.bloodOrbs,
+      onStartRun: (cfg) => {
+        this.startConfiguredRun({ ...cfg, lockPointer: true });
+      },
+      onCardDrafted: () => {
+        this.weaponSystem.meleeReachMultiplier = this.scaling.getMeleeReachMultiplier();
+        this.waveDirector.startWave(this.waveDirector.currentWave + 1);
+        this.input.requestPointerLock();
+      },
+    });
+
+    // 9. Input Manager & Hotkeys
     this.lastMoveInput = { moveForward: 0, moveRight: 0 };
     this.footstepAccum = 0.0;
     this.input = new InputManager(
       this.renderer.domElement,
-      (dx, dy) => this.cameraRig.applyMouseDelta(dx, dy),
+      (dx, dy) => {
+        if (!this.altarEngine.isOpen) {
+          this.cameraRig.applyMouseDelta(dx, dy);
+        }
+      },
       (code) => this._handleHotkey(code)
     );
 
-    const lockOverlay = document.getElementById('pointer-lock-overlay');
-    lockOverlay.addEventListener('click', () => this.input.requestPointerLock());
-    this.renderer.domElement.addEventListener('click', () => this.input.requestPointerLock());
+    this.renderer.domElement.addEventListener('click', () => {
+      if (!this.altarEngine.isOpen) {
+        this.input.requestPointerLock();
+      }
+    });
 
     document.addEventListener('pointerlockchange', () => {
       if (this.input.isPointerLocked) {
         lockOverlay.classList.add('hidden');
-      } else {
+      } else if (!this.altarEngine.isOpen) {
         lockOverlay.classList.remove('hidden');
       }
     });
 
-    // 6. Cache HUD Elements for Zero-GC Telemetry Updates
+    // 10. Cache HUD Elements
     this._cacheHudElements();
 
-    // 7. Fixed 120Hz Timestep Loop State
+    // 11. Fixed 120Hz Timestep Loop State
     this.fixedDt = MovementConfig.DT;
     this.accumulator = 0.0;
     this.lastFrameTime = performance.now();
@@ -119,7 +223,55 @@ class SanguineGreyboxApp {
     requestAnimationFrame((now) => this._loop(now));
   }
 
+  startConfiguredRun({
+    characterId = CharacterId.NOSFERATU_SOVEREIGN,
+    weaponId = WeaponId.OCCULT_SCYTHE,
+    dangerTier = 0,
+    arenaId = 'CATHEDRAL_NAVE',
+    lockPointer = false,
+  } = {}) {
+    this.scaling.reset();
+    this.weaponSystem.configureSingleWeaponRun({
+      characterId,
+      weaponId,
+      lockSingleWeapon: true,
+      enforceAllowedPool: true,
+    });
+    this.altarEngine.setSingleWeaponFilter(this.weaponSystem.singleWeaponId);
+    this.waveDirector.setDangerTier(dangerTier);
+
+    const arenaDef = getModularArenaById(arenaId);
+    this.activeSpawnKey = arenaDef.spawnKey || 'COURTYARD';
+    const sp = ArenaSpawnPoints[this.activeSpawnKey];
+    this.controller.respawn(sp.position, sp.yaw);
+    this._updateZoneBanner(`${arenaDef.name} [D${dangerTier}]`);
+
+    this.huskManager.populateArenaWave();
+    this.waveDirector.startWave(1);
+
+    if (lockPointer && this.input) {
+      this.input.requestPointerLock();
+    }
+  }
+
   _handleHotkey(code) {
+    // When Blood Altar is open: 1/2/3 selects slot, Q/W/E rerolls slot!
+    if (this.altarEngine.isOpen) {
+      if (code === 'Digit1') return this.hudAndAltarUI.handleSelectSlot(0);
+      if (code === 'Digit2') return this.hudAndAltarUI.handleSelectSlot(1);
+      if (code === 'Digit3') return this.hudAndAltarUI.handleSelectSlot(2);
+      if (code === 'KeyQ') return this.hudAndAltarUI.handleRerollSlot(0);
+      if (code === 'KeyW') return this.hudAndAltarUI.handleRerollSlot(1);
+      if (code === 'KeyE') return this.hudAndAltarUI.handleRerollSlot(2);
+      return;
+    }
+
+    if (code === 'Tab') {
+      // Instant Blood Altar open shortcut for testing Per-Card Rerolls
+      this.waveDirector.completeCurrentWave();
+      return;
+    }
+
     const spawnMap = {
       Digit1: 'COURTYARD',
       Digit2: 'WALL_RUN_CHASM',
@@ -141,7 +293,7 @@ class SanguineGreyboxApp {
   }
 
   _updateZoneBanner(zoneName) {
-    if (this.hud.zoneName) {
+    if (this.hud?.zoneName) {
       this.hud.zoneName.textContent = zoneName;
     }
   }
@@ -161,7 +313,10 @@ class SanguineGreyboxApp {
       wallArc: document.getElementById('hud-wallrun-bar'),
       slideArc: document.getElementById('hud-slide-bar'),
       zoneName: document.getElementById('hud-zone-name'),
-      // Combat HUD
+      waveVal: document.getElementById('hud-wave-val'),
+      dangerVal: document.getElementById('hud-danger-val'),
+      vitaeVal: document.getElementById('hud-vitae-val'),
+      diceVal: document.getElementById('hud-dice-val'),
       hpVal: document.getElementById('hud-hp-val'),
       bloodVal: document.getElementById('hud-blood-val'),
       bloodBar: document.getElementById('hud-blood-bar'),
@@ -194,38 +349,45 @@ class SanguineGreyboxApp {
     this.lastFrameTime = now;
     this.accumulator += frameDt;
 
-    // 1. Execute Fixed 120Hz Simulation Steps (respecting Micro-Hitstop Freeze Frames!)
     const t0 = performance.now();
     let ticksExecuted = 0;
     while (this.accumulator >= this.fixedDt && ticksExecuted < 8) {
       const tickInput = this.input.sampleTickInput();
       this.lastMoveInput = tickInput;
 
-      if (this.weaponSystem.hitstopTicksRemaining > 0) {
-        // Micro-Hitstop Freeze Frame: pause physics & swarm step for 2-4 ticks while keeping input & camera shake alive!
-        this.weaponSystem.hitstopTicksRemaining--;
-      } else {
-        this.controller.step(tickInput, this.fixedDt);
-        this.weaponSystem.step(tickInput, this.fixedDt);
-        this.huskManager.step(this.fixedDt, this.controller.position);
+      if (!this.altarEngine.isOpen) {
+        if (this.weaponSystem.hitstopTicksRemaining > 0) {
+          this.weaponSystem.hitstopTicksRemaining--;
+        } else {
+          this.scaling.beginTick();
+          this.controller.step(tickInput, this.fixedDt);
+          this.weaponSystem.step(tickInput, this.fixedDt);
+          this.huskManager.step(this.fixedDt, this.controller.position);
+          this.waveDirector.step(this.fixedDt);
+          this.familiarSystem.step(this.fixedDt, this.controller.position);
+          this.bloodOrbs.step(
+            this.fixedDt,
+            this.controller.position,
+            this.scaling.getMagneticPickupRadius(4.5)
+          );
 
-        // Pitch-varied footsteps during grounded RUN or WALL_RUN
-        const hSpd = this.controller.getHorizontalSpeed();
-        if (
-          (this.controller.state === MovementState.RUN && this.controller.grounded) ||
-          this.controller.state === MovementState.WALL_RUN
-        ) {
-          this.footstepAccum += hSpd * this.fixedDt;
-          if (this.footstepAccum >= 3.6) {
-            this.footstepAccum = 0.0;
-            this.audio.playFootstep();
+          const hSpd = this.controller.getHorizontalSpeed();
+          if (
+            (this.controller.state === MovementState.RUN && this.controller.grounded) ||
+            this.controller.state === MovementState.WALL_RUN
+          ) {
+            this.footstepAccum += hSpd * this.fixedDt;
+            if (this.footstepAccum >= 3.6) {
+              this.footstepAccum = 0.0;
+              this.audio.playFootstep();
+            }
           }
         }
-      }
 
-      if (this.controller.position.y < -15.0) {
-        const sp = ArenaSpawnPoints[this.activeSpawnKey];
-        this.controller.respawn(sp.position, sp.yaw);
+        if (this.controller.position.y < -15.0) {
+          const sp = ArenaSpawnPoints[this.activeSpawnKey];
+          this.controller.respawn(sp.position, sp.yaw);
+        }
       }
 
       this.accumulator -= this.fixedDt;
@@ -235,11 +397,9 @@ class SanguineGreyboxApp {
       this.physicsStepMs = (performance.now() - t0) / ticksExecuted;
     }
 
-    // 2. Interpolate Camera Rig, Apply Directional Trauma Shake & Update Viewmodels + Pooled VFX
     const alpha = this.accumulator / this.fixedDt;
     this.cameraRig.update(frameDt, alpha, this.lastMoveInput);
 
-    // Quadratic Trauma Shake (Shake = MaxAngle * Trauma^2)
     const traumaSq = this.weaponSystem.cameraTrauma * this.weaponSystem.cameraTrauma;
     const shakePitch = traumaSq * (Math.sin(now * 0.065) * 0.032);
     const shakeYaw = traumaSq * (Math.cos(now * 0.082) * 0.028);
@@ -265,10 +425,8 @@ class SanguineGreyboxApp {
     this.viewmodel.update(frameDt);
     this.vfx.update(frameDt, this.camera);
 
-    // 3. Render 3D Scene
     this.renderer.render(this.scene, this.camera);
 
-    // 4. Update Speed Lines & Telemetry HUD
     this._renderSpeedLines(now);
     this._updateHud(now);
   }
@@ -316,6 +474,7 @@ class SanguineGreyboxApp {
 
     const ctrl = this.controller;
     const ws = this.weaponSystem;
+    const wd = this.waveDirector;
     const hSpeed = ctrl.getHorizontalSpeed();
 
     this.hud.speedValue.textContent = hSpeed.toFixed(1);
@@ -339,38 +498,59 @@ class SanguineGreyboxApp {
     this.hud.rollVal.textContent = `${rollDeg >= 0 ? '+' : ''}${rollDeg.toFixed(1)}°`;
     this.hud.posVal.textContent = `${ctrl.position.x.toFixed(1)}, ${ctrl.position.y.toFixed(1)}, ${ctrl.position.z.toFixed(1)}`;
 
-    // Center Crosshair Arcs (Left = Blood Gauge, Right = Dash/Wall-Run Ready)
+    // Wave, Danger, Vitae & Blood Dice Readouts
+    if (this.hud.waveVal) {
+      const rem = Math.max(0, wd.waveDurationSec - wd.waveElapsedSec);
+      this.hud.waveVal.textContent = `W${wd.currentWave} (${rem.toFixed(1)}s)`;
+    }
+    if (this.hud.dangerVal) {
+      this.hud.dangerVal.textContent = `D${wd.dangerTier}`;
+    }
+    if (this.hud.vitaeVal) {
+      this.hud.vitaeVal.textContent = `${Math.floor(this.bloodOrbs.currentVitae)}`;
+    }
+    if (this.hud.diceVal) {
+      this.hud.diceVal.textContent = `${this.altarEngine.bloodDiceCurrent}/${this.altarEngine.bloodDiceMax}`;
+    }
+
     const bloodRatio = ws.blood / ws.maxBlood;
     this.hud.slideArc.style.transform = `scaleY(${bloodRatio.toFixed(2)})`;
 
     let rightArcRatio = 1.0;
-    if (ws.currentSlot === WeaponSlot.OCCULT_KATANA && ws.katanaDashCooldown > 0) {
-      rightArcRatio = 1.0 - ws.katanaDashCooldown / ws.weapons[1].altFire.cooldownSec;
+    if (ws.currentSlot === WeaponSlot.OCCULT_SCYTHE && ws.katanaDashCooldown > 0) {
+      rightArcRatio = 1.0 - ws.katanaDashCooldown / ws.weapons[WeaponSlot.OCCULT_SCYTHE].altFire.cooldownSec;
     } else if (ctrl.state === MovementState.WALL_RUN) {
       rightArcRatio = Math.max(0, 1.0 - ctrl.wallRunTimer / ctrl.cfg.WALL_MAX_DURATION);
     }
     this.hud.wallArc.style.transform = `scaleY(${rightArcRatio.toFixed(2)})`;
 
-    // Combat HUD Updates
-    this.hud.hpVal.textContent = `${Math.round(ws.hp)} // ${ws.maxHp}`;
+    const barrierTxt = ws.overbloodBarrier > 0 ? ` (+${Math.round(ws.overbloodBarrier)})` : '';
+    this.hud.hpVal.textContent = `${Math.round(ws.hp)}${barrierTxt} // ${ws.maxHp}`;
     this.hud.bloodVal.textContent = `${Math.round(ws.blood)} // ${ws.maxBlood}`;
     this.hud.bloodBar.style.width = `${(bloodRatio * 100).toFixed(1)}%`;
 
     const activeWeapon = ws.weapons[ws.currentSlot];
-    this.hud.weaponName.textContent = activeWeapon.displayName;
-    if (ws.currentSlot === WeaponSlot.JACKAL_AND_CASULL) {
+    this.hud.weaponName.textContent = `${activeWeapon.displayName} [SINGLE-RUN]`;
+
+    if (ws.currentSlot === WeaponSlot.JACKAL_CASULL) {
       this.hud.ammoVal.textContent = `${ws.pistolAmmo} / ${ws.pistolMaxAmmo} [${ws.pistolNextBarrel}]`;
       this.hud.empoweredBadge.style.display = ws.isEmpoweredMag ? 'inline-block' : 'none';
+    } else if (ws.currentSlot === WeaponSlot.TRENCH_SHOTGUN) {
+      this.hud.ammoVal.textContent = `${ws.shotgunAmmo} / ${ws.shotgunMaxAmmo} [12-PELLET]`;
+      this.hud.empoweredBadge.style.display = ws.isEmpoweredMag ? 'inline-block' : 'none';
     } else {
-      const dashReady = ws.katanaDashCooldown <= 0 ? 'DASH READY' : `DASH ${(ws.katanaDashCooldown).toFixed(1)}s`;
-      this.hud.ammoVal.textContent = `INF EDGE [${dashReady}]`;
+      const effReach = (
+        (activeWeapon.meleeGeometry?.reach || 2.5) * ws.getEffectiveMeleeReachMultiplier()
+      ).toFixed(2);
+      const arc = activeWeapon.meleeGeometry?.horizontal_arc || 120;
+      this.hud.ammoVal.textContent = `REACH ${effReach}m // ${arc}° ARC`;
       this.hud.empoweredBadge.style.display = 'none';
     }
 
-    // Active Blood Reload Bar
     if (ws.isReloading) {
       this.hud.reloadWrap.classList.remove('hidden');
-      const pct = (ws.reloadTimer / ws.weapons[0].ammo.reloadDurationSec) * 100;
+      const reloadDur = ws.weapons[ws.currentSlot].ammo.reloadDurationSec;
+      const pct = (ws.reloadTimer / reloadDur) * 100;
       this.hud.reloadCursor.style.left = `${Math.min(100, pct).toFixed(1)}%`;
     } else {
       this.hud.reloadWrap.classList.add('hidden');

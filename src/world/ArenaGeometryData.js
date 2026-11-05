@@ -378,3 +378,42 @@ export function buildGreyboxCollisionWorld(world) {
     label: 'Speedway Return Pad',
   });
 }
+
+/**
+ * Modular Arena Definitions (Section 4.7 of GAME_PLAN.md)
+ */
+export const ModularArenaCatalog = Object.freeze([
+  {
+    id: 'CATHEDRAL_NAVE',
+    name: 'Cathedral of the Crimson Eclipse',
+    subtitle: 'Balanced Multi-Tier Gothic Nave & Wall-Run Pillars',
+    unlockCondition: 'DEFAULT',
+    spawnKey: 'COURTYARD',
+    fogColorHex: '#0b0b0e',
+    ambientLightHex: '#2a1820',
+  },
+  {
+    id: 'SANGUINE_AQUEDUCTS',
+    name: 'Subterranean Sanguine Aqueducts',
+    subtitle: 'High-Speed Parallel Wall-Run Trenches & 28° Slide Ramps',
+    unlockCondition: 'CLEAR_DANGER_1',
+    spawnKey: 'SLOPE_AQUEDUCT',
+    fogColorHex: '#12080c',
+    ambientLightHex: '#351218',
+  },
+  {
+    id: 'BASKERVILLE_COURTYARD',
+    name: 'Baskerville Necropolis Keep',
+    subtitle: '100m Bhop Speedway & Dense Swarm Slaughter Sightlines',
+    unlockCondition: 'CLEAR_DANGER_3',
+    spawnKey: 'BHOP_SPEEDWAY',
+    fogColorHex: '#090b12',
+    ambientLightHex: '#1c2030',
+  },
+]);
+
+export function getModularArenaById(arenaId = 'CATHEDRAL_NAVE') {
+  return (
+    ModularArenaCatalog.find((a) => a.id === arenaId) || ModularArenaCatalog[0]
+  );
+}

@@ -3,15 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SANGUINE_RUNNER // Phase 2: Core Combat, Arsenal &amp; Object-Pooled Gore</title>
+  <title>SANGUINE_RUNNER // Single-Weapon Roguelike Arena Shooter</title>
   <style>
     :root {
       --bg-obsidian: #0b0b0e;
-      --panel-bg: rgba(14, 15, 20, 0.86);
+      --panel-bg: rgba(14, 15, 20, 0.88);
       --border-slate: #353746;
       --crimson: #e60012;
       --vermilion: #ff3b00;
       --gold: #ffd700;
+      --violet: #9d00ff;
       --bone: #e5e2dc;
       --muted: #8e8c88;
     }
@@ -182,7 +183,7 @@
       box-shadow: 0 0 6px var(--crimson);
     }
 
-    /* TOP TELEMETRY & ZONE BAR */
+    /* TOP TELEMETRY & WAVE BAR */
     #top-bar {
       position: fixed;
       top: 14px;
@@ -192,18 +193,22 @@
       background: var(--panel-bg);
       border: 1px solid var(--border-slate);
       border-top: 2px solid var(--crimson);
-      padding: 8px 18px;
+      padding: 8px 16px;
       display: flex;
-      gap: 20px;
+      gap: 16px;
       align-items: center;
       font-size: 12px;
       letter-spacing: 0.05em;
       pointer-events: none;
+      white-space: nowrap;
     }
 
     .stat-chip span { color: var(--muted); }
     .stat-chip strong { color: var(--bone); margin-left: 4px; }
     #hud-zone-name { color: var(--gold); font-weight: bold; }
+    #hud-wave-val { color: var(--crimson); }
+    #hud-danger-val { color: var(--vermilion); }
+    #hud-vitae-val { color: var(--gold); }
 
     /* BOTTOM-LEFT VITALS, SPEEDOMETER & MOVEMENT STATE HUD */
     #bottom-left-hud {
@@ -304,7 +309,7 @@
       bottom: 20px;
       right: 20px;
       z-index: 5;
-      width: 340px;
+      width: 355px;
       background: var(--panel-bg);
       border: 1px solid var(--border-slate);
       border-right: 4px solid var(--gold);
@@ -313,10 +318,10 @@
     }
 
     #hud-weapon-name {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 900;
       color: var(--gold);
-      letter-spacing: 0.08em;
+      letter-spacing: 0.07em;
     }
 
     .ammo-row {
@@ -324,7 +329,7 @@
       align-items: center;
       justify-content: space-between;
       margin: 6px 0 8px;
-      font-size: 18px;
+      font-size: 16px;
       font-weight: bold;
     }
 
@@ -356,54 +361,214 @@
     }
     .key-tag { color: var(--gold); font-weight: bold; }
 
-    /* POINTER LOCK START OVERLAY */
+    /* PRE-RUN LOADOUT SELECTOR OVERLAY */
     #pointer-lock-overlay {
       position: fixed;
       inset: 0;
       z-index: 10;
-      background: rgba(11, 11, 14, 0.84);
+      background: rgba(11, 11, 14, 0.88);
       display: flex;
       align-items: center;
       justify-content: center;
-      cursor: pointer;
     }
     #pointer-lock-overlay.hidden { display: none; }
 
     .overlay-card {
       background: #12131a;
       border: 1px solid var(--crimson);
-      box-shadow: 0 0 36px rgba(230, 0, 18, 0.28);
-      padding: 28px 36px;
-      max-width: 560px;
-      text-align: center;
+      box-shadow: 0 0 42px rgba(230, 0, 18, 0.32);
+      padding: 24px 32px;
+      width: 640px;
+      max-width: 94vw;
+      text-align: left;
     }
     .overlay-card h1 {
       font-size: 24px;
       letter-spacing: 0.12em;
       color: var(--crimson);
-      margin-bottom: 6px;
+      margin-bottom: 4px;
+      text-align: center;
     }
     .overlay-card h2 {
-      font-size: 12px;
+      font-size: 11px;
       letter-spacing: 0.14em;
       color: var(--gold);
       margin-bottom: 16px;
+      text-align: center;
     }
-    .overlay-card p {
-      font-size: 13px;
+
+    .loadout-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .loadout-field label {
+      display: block;
+      font-size: 11px;
+      color: var(--gold);
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+    .loadout-field select {
+      width: 100%;
+      padding: 8px 10px;
+      background: #1b1d28;
+      border: 1px solid var(--border-slate);
       color: var(--bone);
-      line-height: 1.6;
-      margin-bottom: 18px;
+      font-family: inherit;
+      font-size: 12px;
+    }
+    #loadout-char-summary {
+      font-size: 11px;
+      color: #ff8e96;
+      background: rgba(230, 0, 18, 0.1);
+      border-left: 3px solid var(--crimson);
+      padding: 6px 10px;
+      margin-bottom: 14px;
     }
     .cta-btn {
-      display: inline-block;
-      padding: 10px 24px;
+      display: block;
+      width: 100%;
+      padding: 12px 24px;
       background: var(--crimson);
+      border: 1px solid var(--gold);
       color: var(--bone);
       font-weight: bold;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.12em;
       font-size: 13px;
       text-transform: uppercase;
+      text-align: center;
+      cursor: pointer;
+    }
+    .cta-btn:hover {
+      background: #ff1224;
+    }
+
+    /* BLOOD ALTAR PER-CARD TARGETED REROLL MODAL */
+    #blood-altar-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 15;
+      background: rgba(8, 8, 12, 0.90);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    #blood-altar-modal.hidden {
+      display: none;
+    }
+
+    .altar-header {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+    .altar-header h1 {
+      font-size: 26px;
+      color: var(--crimson);
+      letter-spacing: 0.14em;
+    }
+    .altar-economy-bar {
+      display: flex;
+      gap: 24px;
+      justify-content: center;
+      margin-top: 8px;
+      font-size: 13px;
+      background: #14151e;
+      border: 1px solid var(--border-slate);
+      padding: 8px 20px;
+    }
+    .altar-economy-bar strong {
+      color: var(--gold);
+    }
+
+    #altar-cards-row {
+      display: flex;
+      gap: 18px;
+      max-width: 1060px;
+      width: 100%;
+      justify-content: center;
+    }
+
+    .altar-card {
+      flex: 1;
+      max-width: 330px;
+      background: #13141c;
+      border: 2px solid #6c6a65;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 270px;
+    }
+    .altar-card.rarity-common { border-color: #a09e97; }
+    .altar-card.rarity-rare { border-color: var(--crimson); box-shadow: 0 0 18px rgba(230, 0, 18, 0.25); }
+    .altar-card.rarity-epic { border-color: var(--violet); box-shadow: 0 0 22px rgba(157, 0, 255, 0.30); }
+    .altar-card.rarity-eldritch { border-color: var(--gold); box-shadow: 0 0 28px rgba(255, 215, 0, 0.40); }
+    .altar-card.locked {
+      outline: 2px dashed var(--gold);
+    }
+
+    .altar-card-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      margin-bottom: 8px;
+    }
+    .altar-rarity-badge {
+      font-weight: bold;
+      color: var(--gold);
+    }
+    .altar-card-title {
+      font-size: 16px;
+      font-weight: 900;
+      color: var(--bone);
+      margin-bottom: 6px;
+    }
+    .altar-card-tags {
+      font-size: 10px;
+      color: var(--gold);
+      margin-bottom: 10px;
+      letter-spacing: 0.06em;
+    }
+    .altar-card-desc {
+      font-size: 12px;
+      color: #c8c5be;
+      line-height: 1.5;
+      flex-grow: 1;
+      margin-bottom: 14px;
+    }
+    .altar-btn-draft {
+      width: 100%;
+      padding: 9px;
+      background: var(--crimson);
+      color: var(--bone);
+      border: 1px solid var(--gold);
+      font-family: inherit;
+      font-weight: bold;
+      font-size: 12px;
+      cursor: pointer;
+      margin-bottom: 6px;
+    }
+    .altar-sub-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .altar-btn-reroll, .altar-btn-lock {
+      flex: 1;
+      padding: 7px 6px;
+      background: #222430;
+      color: var(--bone);
+      border: 1px solid var(--border-slate);
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .altar-btn-reroll.tithe {
+      border-color: var(--crimson);
+      color: #ff7a85;
     }
   </style>
 </head>
@@ -413,7 +578,7 @@
   <div id="hitstop-flash"></div>
   <div id="damage-numbers-layer"></div>
 
-  <!-- Diegetic Crosshair with Blood Gauge (Left) & Dash/Wall-Run (Right) Arcs -->
+  <!-- Diegetic Crosshair -->
   <div id="crosshair-wrap">
     <div class="gauge-arc gauge-arc-left"><div id="hud-slide-bar" class="gauge-fill"></div></div>
     <div class="crosshair-tick tick-h tick-l"></div>
@@ -430,13 +595,17 @@
     <div id="hud-reload-cursor"></div>
   </div>
 
-  <!-- Top Telemetry Bar -->
+  <!-- Top Telemetry & Wave Bar -->
   <div id="top-bar">
-    <div class="stat-chip">ZONE: <span id="hud-zone-name">1: Central Courtyard</span></div>
-    <div class="stat-chip"><span>FPS:</span><strong id="hud-fps-val">120</strong></div>
-    <div class="stat-chip"><span>120Hz TICK:</span><strong id="hud-phys-val">0.04 ms</strong></div>
+    <div class="stat-chip">ARENA: <span id="hud-zone-name">Cathedral of the Crimson Eclipse</span></div>
+    <div class="stat-chip"><span>WAVE:</span><strong id="hud-wave-val">W1 (25.0s)</strong></div>
+    <div class="stat-chip"><span>DANGER:</span><strong id="hud-danger-val">D0</strong></div>
+    <div class="stat-chip"><span>VITAE:</span><strong id="hud-vitae-val">100</strong></div>
+    <div class="stat-chip"><span>DICE:</span><strong id="hud-dice-val">2/8</strong></div>
     <div class="stat-chip"><span>KILLS:</span><strong id="hud-kills-val">0</strong></div>
-    <div class="stat-chip"><span>GIBBED:</span><strong id="hud-gibs-val">0</strong></div>
+    <div class="stat-chip"><span>GIBS:</span><strong id="hud-gibs-val">0</strong></div>
+    <div class="stat-chip"><span>FPS:</span><strong id="hud-fps-val">120</strong></div>
+    <div class="stat-chip"><span>TICK:</span><strong id="hud-phys-val">0.04 ms</strong></div>
     <div class="stat-chip"><span>FOV:</span><strong id="hud-fov-val">95.0°</strong></div>
     <div class="stat-chip"><span>TILT:</span><strong id="hud-roll-val">+0.0°</strong></div>
     <div class="stat-chip"><span>POS:</span><strong id="hud-pos-val">0.0, 0.1, 14.0</strong></div>
@@ -469,32 +638,63 @@
     </div>
   </div>
 
-  <!-- Bottom-Right Weapon Arsenal & Context Combat Controls -->
+  <!-- Bottom-Right Single-Weapon Arsenal & Controls -->
   <div id="weapon-hud">
-    <div id="hud-weapon-name">THE JACKAL &amp; CASULL</div>
+    <div id="hud-weapon-name">OCCULT SCYTHE [SINGLE-RUN]</div>
     <div class="ammo-row">
-      <span id="hud-ammo-val">12 / 12 [CASULL]</span>
+      <span id="hud-ammo-val">REACH 4.00m // 160° ARC</span>
       <span id="hud-empowered-badge">BLOOD EMPOWERED</span>
     </div>
-    <div id="hud-combat-event">READY // ZERO HOTKEY BLOAT</div>
+    <div id="hud-combat-event">READY // SINGLE-WEAPON RUN</div>
     <div class="controls-compact">
-      <div><span class="key-tag">LMB</span> : Fire / Slash &bull; <span class="key-tag">RMB</span> : Twin Burst / Blood-Dash</div>
-      <div><span class="key-tag">Q / E / Wheel</span> : Swap Jackal &amp; Casull &harr; Katana</div>
-      <div><span class="key-tag">F</span> : Sanguine Execution (Staggered) / Claw</div>
-      <div><span class="key-tag">Slide + F</span> : Vampiric Blood-Kick (Bowling Launch!)</div>
-      <div><span class="key-tag">R</span> : Reload / Active Blood Reload &bull; <span class="key-tag">1-5</span> : Zones</div>
+      <div><span class="key-tag">LMB</span> : Primary Strike/Fire &bull; <span class="key-tag">RMB</span> : Alt-Fire / Parry / Dash</div>
+      <div><span class="key-tag">F</span> : Execution / Claw &bull; <span class="key-tag">Slide+F</span> : Blood-Kick Bowling</div>
+      <div><span class="key-tag">TAB</span> : Open Blood Altar (Per-Card Rerolls Q/W/E)</div>
+      <div><span class="key-tag">R</span> : Active Blood Reload &bull; <span class="key-tag">ESC</span> : Change Run Loadout</div>
     </div>
   </div>
 
-  <!-- Pointer Lock Prompt -->
+  <!-- Blood Altar Per-Card Targeted Reroll Modal (ARAM Mayhem / TFT Style) -->
+  <div id="blood-altar-modal" class="hidden">
+    <div class="altar-header">
+      <h1>SANGUINE ALTAR // PER-CARD AUGMENT DRAFT</h1>
+      <div class="altar-economy-bar">
+        <span>BLOOD DICE (FREE REROLLS): <strong id="altar-dice-val">2 / 8</strong></span>
+        <span>VITAE ESSENCE: <strong id="altar-vitae-val">100</strong></span>
+        <span>NEXT BLOOD TITHE: <strong id="altar-tithe-val">50 VITAE</strong></span>
+        <span>PITY PROTECTION: <strong id="altar-pity-val">0 / 10</strong></span>
+      </div>
+    </div>
+    <div id="altar-cards-row"></div>
+  </div>
+
+  <!-- Pre-Run Loadout Selector & Pointer Lock Overlay -->
   <div id="pointer-lock-overlay">
     <div class="overlay-card">
       <h1>SANGUINE_RUNNER</h1>
-      <h2>PHASE 2 // CORE COMBAT, ARSENAL &amp; OBJECT-POOLED GORE</h2>
-      <p>
-        The Jackal &amp; Casull &bull; Occult Katana Blood-Dash &bull; Slide Blood-Kick Bowling &bull; Micro-Hitstop &amp; FOV Punch &bull; Batched Damage Numbers
-      </p>
-      <div class="cta-btn">CLICK TO ENGAGE SLAUGHTER</div>
+      <h2>SINGLE-WEAPON ROGUELIKE // BROTATO LOADOUT &amp; DIFFERENTIATED MELEE</h2>
+
+      <div class="loadout-grid">
+        <div class="loadout-field">
+          <label for="loadout-char-select">1. SELECT BLOODLINE CHARACTER (STAT OFFSETS &amp; PASSIVE)</label>
+          <select id="loadout-char-select"></select>
+        </div>
+        <div id="loadout-char-summary"></div>
+        <div class="loadout-field">
+          <label for="loadout-weapon-select">2. SELECT SINGLE RUN WEAPON (ALLOWED STARTING POOL)</label>
+          <select id="loadout-weapon-select"></select>
+        </div>
+        <div class="loadout-field">
+          <label for="loadout-danger-select">3. SELECT DANGER / CORRUPTION TIER (D0 - D5)</label>
+          <select id="loadout-danger-select"></select>
+        </div>
+        <div class="loadout-field">
+          <label for="loadout-arena-select">4. SELECT MODULAR GOTHIC ARENA</label>
+          <select id="loadout-arena-select"></select>
+        </div>
+      </div>
+
+      <button id="loadout-start-btn" class="cta-btn">ENGAGE SINGLE-WEAPON RUN (CLICK TO LOCK MOUSE)</button>
     </div>
   </div>
 
