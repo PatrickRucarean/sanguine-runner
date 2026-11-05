@@ -968,40 +968,40 @@ g:/Lowkey/
 
 ---
 
-### Phase 1: Kinematic Movement Greybox & Procedural Camera *(COMPLETED — Checkpoint 1)*
+### Phase 1: Kinematic Movement Greybox & Procedural Camera *(COMPLETED — Checkpoint `89fd5bc`)*
 * **Objective:** Nail the 120 Hz movement feel before adding a single enemy. Moving around the empty gothic arena must feel addictive on its own.
 * **Deliverables:**
   1. Build the **Brutalist Cathedral Arena** (`ArenaBuilder.js`) with central slaughter floor, gothic wall-run pillars, sloped blood-aqueducts, elevated walkways, and mantle ledges.
   2. Implement `KinematicController.js` with all 6 states (`IDLE`, `RUN`, `SLIDE`, `WALL_RUN`, `AIR`, `MANTLE`), coyote time ($120\text{ ms}$), jump buffer ($120\text{ ms}$), and bunny-hop friction bypass.
   3. Implement `CameraRig.js` with wall-run roll ($\pm 12^\circ$), slide tilt ($4.5^\circ$), dynamic FOV warp ($95^\circ \to 113^\circ$), and live HUD **Speedometer (`m/s`)** + **State Readout**.
-* **Acceptance Criteria:** Player can chain a ground slide $\rightarrow$ slide-jump $\rightarrow$ air-strafe $\rightarrow$ wall-run $\rightarrow$ wall-kick $\rightarrow$ ledge mantle maintaining $>20\text{ m/s}$ continuously at a locked 120 Hz simulation tick.
+* **Acceptance Criteria:** Player can chain a ground slide $\rightarrow$ slide-jump $\rightarrow$ air-strafe $\rightarrow$ wall-run $\rightarrow$ wall-kick $\rightarrow$ ledge mantle maintaining $>20\text{ m/s}$ continuously at a locked 120 Hz simulation tick (`0.0047 ms/tick` verified in `tests/verify_physics.mjs`).
 
-### Phase 2: Core Combat, Differentiated Melee Geometry, Juice, & Single-Weapon Loadout
+### Phase 2: Core Combat, Differentiated Melee Geometry, Juice, & Single-Weapon Loadout *(COMPLETED — Checkpoints `f195d73` & `1bd41cc`)*
 * **Objective:** Establish visceral shooting, differentiated melee sector geometry (*Stake & Hammer*, *Alucard Sword*, *Occult Scythe* sweet-spot), decoupled Character + Single-Weapon selection, and zero-lag object pooling.
 * **Deliverables:**
   1. Implement `CharacterCatalog.js` and `WeaponDefinitions.js` enforcing the **Single-Weapon Run Rule** and **Brotato-Style Character vs. Weapon Decoupling**.
   2. Implement `WeaponSystem.js` with 3D low-poly procedural viewmodels, damped-spring recoil, Active Blood Reload (`R`), and **Differentiated Melee Hitbox Geometry** (`reach`, `horizontal_arc`, `timing`, `melee_reach_multiplier`, and *Occult Scythe* Sweet-Spot `3x DMG + bleed` vs. inner-shaft knockback).
   3. Implement `F` Quick Melee: **Sanguine Claw**, **Slide Blood-Kick** (launches staggered targets as bowling balls), and **Vampiric Execution** on staggered targets.
-  4. Implement `VFXAndPoolManager.js` (pre-allocated InstancedMesh Gibs, Blood Particles, Tracers, and Batched Damage Numbers) + `AudioManager.js` ($\pm 5\%$ random pitch variation) + micro-hitstop freeze frames (`2–4 frames`) and FOV punch.
+  4. Implement `VFXAndPoolManager.js` (pre-allocated InstancedMesh Gibs, Blood Particles, 3D Melee Arc Ribbons, Tracers, and Batched Damage Numbers) + `AudioManager.js` ($\pm 5\%$ random pitch variation) + micro-hitstop freeze frames (`2–4 frames`) and FOV punch (verified in `tests/verify_combat.mjs`).
 
-### Phase 3: Wave Director (`Danger 0–5`), AI Swarm, & Modular Arenas
+### Phase 3: Wave Director (`Danger 0–5`), AI Swarm, & Modular Arenas *(COMPLETED — Checkpoint `383a719`)*
 * **Objective:** Bring the arena to life with escalating waves of gothic horrors, `Danger 0–5` corruption tiers, modular arena loading, and the signature PSX/Boomer-Shooter visual pipeline.
 * **Deliverables:**
-  1. Implement `EnemySwarmManager.js` using `THREE.InstancedMesh` and interleaved Boids separation (`1/4` ticks) for *Thrall Husks*, *Feral Nightstalkers*, *Hemomancer Acolytes*, *Iron Inquisitors*, and *Cathedral Executioners*.
+  1. Implement `TargetHuskManager.js` using `THREE.InstancedMesh` and interleaved Boids separation (`1/4` ticks) for *Thrall Husks*, *Feral Nightstalkers*, *Hemomancer Acolytes*, *Censer Zealots*, *Iron Inquisitors*, and *Cathedral Executioners*.
   2. Implement `WaveDirector.js` with the Brotato-style wave timer ($25\text{ s} \to 90\text{ s}$), credit budget curve, Blood Moon surges, and **`Danger 0` to `Danger 5` Corruption Modifiers**.
   3. Support modular `ArenaDefinition` loading (`CATHEDRAL_NAVE`, `SANGUINE_AQUEDUCTS`, `BASKERVILLE_COURTYARD`).
   4. Integrate `PostProcessingPass.js` (Bayer $4\times 4$ dithering, color quantization, and low-health chromatic aberration).
 
-### Phase 4: Roguelike Loop, Pooled Blood Orbs, & Per-Card Reroll Blood Altar UI
+### Phase 4: Roguelike Loop, Pooled Blood Orbs, & Per-Card Reroll Blood Altar UI *(COMPLETED — Checkpoint `383a719`)*
 * **Objective:** Complete the full core loop from pre-run Character/Weapon/Danger selection through infinite single-weapon builds.
 * **Deliverables:**
   1. Implement `BloodOrbManager.js` with 2,048 pre-allocated Vitae orbs, magnetic attraction physics, end-of-wave **Sanguine Harvest** vacuum, and spatial-hash auto-merging.
   2. Implement `ScalingEngine.js` with Additive, Multiplicative, Inverse-Rate, Hyperbolic, Multi-Tier Overflow math, and `melee_reach_multiplier` scaling.
-  3. Build `PerkCatalog.js` (filtered dynamically to the player's single chosen weapon), `AltarDraftEngine.js`, and the **Blood Altar Draft UI** with **Per-Card Targeted Rerolls (`Q/W/E` or `Hover + R`)**, **Blood Dice** banking (`+2/wave`, cap `8–10`), exponential **Blood Tithe** paid rerolls ($50 \cdot 2^k\text{ Vitae}$), and **Bad Luck Protection Pity** escalation.
+  3. Build `PerkCatalog.js` (filtered dynamically to the player's single chosen weapon), `AltarDraftEngine.js`, and the **Blood Altar Draft UI** (`HudAndAltarUI.js`) with **Per-Card Targeted Rerolls (`Q/W/E` or `Hover + R`)**, **Blood Dice** banking (`+2/wave`, cap `8–10`), exponential **Blood Tithe** paid rerolls ($50 \cdot 2^k\text{ Vitae}$), and **Bad Luck Protection Pity** escalation (verified in `tests/verify_roguelike_and_waves.mjs`).
 
-### Phase 5: Autonomous Familiars, Single-Weapon Eldritch Keystones, & Endless Polish
+### Phase 5: Autonomous Familiars, Single-Weapon Eldritch Keystones, & Endless Polish *(COMPLETED — Checkpoint `383a719`+)*
 * **Objective:** Deliver autonomous occult familiars, Wave 10+ Single-Weapon Eldritch Keystones, Boss encounters, and Wave 20+ bullet-hell stability.
 * **Deliverables:**
-  1. Implement `FamiliarSystem.js` (**Shadow Bats**, **Spectral Skulls**, and **Blood Wolves**).
+  1. Implement `FamiliarSystem.js` with pooled 3D `THREE.InstancedMesh` visuals (**Shadow Bats**, **Spectral Skulls**, and **Blood Wolves**).
   2. Add Wave 10+ **Single-Weapon Eldritch Keystones** (transformative passives for *Jackal & Casull*, *Trench Shotgun*, *Stake & Hammer*, *Alucard Sword*, and *Occult Scythe*).
-  3. Implement Boss encounters (*Arch-Inquisitor Lords*) and run full performance profiling to verify $<8\text{ ms}$ frame time at Wave 20+ (`Danger 5`).
+  3. Implement Boss encounters (*Arch-Inquisitor Lords*) and run full performance profiling to verify $<8\text{ ms}$ frame time at Wave 20+ (`Danger 5`) — verified at **`0.0880 ms/tick` (`11,359 Hz` capacity)** in `tests/verify_endgame_benchmark.mjs`.

@@ -364,11 +364,20 @@ class SanguineGreyboxApp {
           this.weaponSystem.step(tickInput, this.fixedDt);
           this.huskManager.step(this.fixedDt, this.controller.position);
           this.waveDirector.step(this.fixedDt);
-          this.familiarSystem.step(this.fixedDt, this.controller.position);
+          this.familiarSystem.step(
+            this.fixedDt,
+            this.controller.position,
+            this.controller.yaw
+          );
           this.bloodOrbs.step(
             this.fixedDt,
             this.controller.position,
             this.scaling.getMagneticPickupRadius(4.5)
+          );
+          this.postProcessing.computeChromaticAberration(
+            this.weaponSystem.hp,
+            this.weaponSystem.maxHp,
+            this.waveDirector.isBloodMoonSurge
           );
 
           const hSpd = this.controller.getHorizontalSpeed();

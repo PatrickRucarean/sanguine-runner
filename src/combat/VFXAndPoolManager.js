@@ -254,6 +254,50 @@ export class VFXAndPoolManager {
   }
 
   /**
+   * Spawns a 3D pooled Melee Sector Arc Ribbon showing the weapon's exact `effectiveReach` and `horizontal_arc`.
+   * For the Occult Scythe, also renders the inner 65% Sweet-Spot boundary arc!
+   */
+  spawnMeleeArcSlash(origin, yawRad, effectiveReach, horizontalArcDeg, isSweetSpotScythe = false) {
+    const segments = 6;
+    const halfArcRad = ((horizontalArcDeg * 0.5) * Math.PI) / 180.0;
+    const y = origin.y - 0.15;
+
+    for (let s = 0; s < segments; s++) {
+      const t0 = s / segments;
+      const t1 = (s + 1) / segments;
+      const a0 = yawRad - halfArcRad + t0 * (halfArcRad * 2.0);
+      const a1 = yawRad - halfArcRad + t1 * (halfArcRad * 2.0);
+
+      const p0 = new Vec3(
+        origin.x - Math.sin(a0) * effectiveReach,
+        y,
+        origin.z - Math.cos(a0) * effectiveReach
+      );
+      const p1 = new Vec3(
+        origin.x - Math.sin(a1) * effectiveReach,
+        y,
+        origin.z - Math.cos(a1) * effectiveReach
+      );
+      this.spawnTracer(p0, p1, isSweetSpotScythe ? 0xffd700 : 0xe60012, 0.13);
+
+      if (isSweetSpotScythe) {
+        const innerR = effectiveReach * 0.65;
+        const q0 = new Vec3(
+          origin.x - Math.sin(a0) * innerR,
+          y - 0.05,
+          origin.z - Math.cos(a0) * innerR
+        );
+        const q1 = new Vec3(
+          origin.x - Math.sin(a1) * innerR,
+          y - 0.05,
+          origin.z - Math.cos(a1) * innerR
+        );
+        this.spawnTracer(q0, q1, 0xe60012, 0.11);
+      }
+    }
+  }
+
+  /**
    * Batches floating damage numbers per targetId within DAMAGE_BATCH_WINDOW_SEC (400ms).
    * If 10 rapid hits/bleed ticks land on the same target in 1 second, they accumulate
    * into a single growing number rather than rendering 10 overlapping text nodes.

@@ -904,6 +904,16 @@ export class WeaponSystem {
     const effectiveReach = mGeo.reach * reachMult;
     const minCos = Math.cos((mGeo.horizontal_arc * 0.5) * DEG2RAD);
 
+    if (this.vfx) {
+      this.vfx.spawnMeleeArcSlash(
+        eyeOrigin,
+        this.controller.yaw,
+        effectiveReach,
+        mGeo.horizontal_arc,
+        Boolean(mGeo.sweet_spot?.enabled)
+      );
+    }
+
     // High-speed movement (>16 m/s) or sliding/wall-running boosts crit
     const isHighMomentum =
       this.controller.getHorizontalSpeed() >= 16.0 ||
