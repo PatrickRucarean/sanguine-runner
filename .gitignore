@@ -2,6 +2,8 @@
 .godot/
 engine/
 build/
+SanguineRunner.exe
+SanguineRunner_console.exe
 *.import
 *.tmp
 export_presets.cfg
