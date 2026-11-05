@@ -16,20 +16,22 @@ In **`SANGUINE_RUNNER`**, you are not a fragile survivor hiding in the shadows�
 ### Core Gameplay Loop
 ```mermaid
 flowchart LR
-    A["Wave Start (Arena Lock)"] --> B["High-Speed Parkour & Kinetic Slaughter"]
+    Loadout["Pre-Run Loadout: Select Bloodline Class + 1 Signature Weapon + Danger Tier (0-5)"] --> A["Wave Start (Arena Lock)"]
+    A --> B["High-Speed Parkour & Single-Weapon Slaughter"]
     B --> C["Siphon Vitae Orbs & Trigger Passive Procs"]
     C --> D{"Wave Timer (25s-90s) Expired?"}
     D -- "No" --> B
     D -- "Yes: Sanguine Harvest" --> E["All Remaining Vitae Magnetized"]
-    E --> F["The Blood Altar (Draft 1 of 4 Perks / Evolutions / Familiars)"]
+    E --> F["The Blood Altar (Per-Card Targeted Reroll & Perk Draft)"]
     F --> G["Escalate Threat Budget & Mutate Arena"]
     G --> A
 ```
 
-### The Three Unbreakable Rules of `SANGUINE_RUNNER`
+### The Four Unbreakable Rules of `SANGUINE_RUNNER`
 1. **Speed Is Life:** Standing still for more than 400ms in Wave 5+ is a death sentence. High horizontal velocity grants passive **Evasion / Grazing Mitigation** and feeds weapon momentum multipliers.
-2. **Zero Hotkey Bloat:** Every active combat verb lives on **WASD, Space, Shift/Ctrl, LMB, RMB, Q/E/Scroll, and F (Quick Melee / Execution)**. There are no `1-2-3-4-5` cooldown bars. Complexity emerges from **movement state combinations** (e.g., *Slide + F = Vampiric Blood-Kick*, *Airborne + Shotgun RMB = Concentrated Blast-Jump*) and **uncapped passive proc chains**.
-3. **Readable Brutalist Chaos:** Environments are stark, monolithic, monochromatic brutalist stone and iron. Enemies, projectiles, and blood bursts are rendered in high-contrast **Arterial Crimson (`#E60012`)**, **Hellfire Orange (`#FF4500`)**, and **Occult Gold (`#FFD700`)** so the player can read 150+ simultaneous threats at 30 m/s.
+2. **Single-Weapon Run & Decoupled Bloodline Loadouts:** There is **no multi-weapon inventory, no mid-run weapon swapping, and no Tier 1–5 weapon merging**. Before Wave 1, the player picks a **Character / Bloodline** (stat offsets & unique passive) and **one Signature Weapon** from that character's allowed starting pool (2–3 weapons per class). That single weapon is carried until the end of the run and mutates into a god-slaying instrument exclusively through infinite passive stacking (`+dmg`, `+bleed`, `+pierce`, `+melee_reach_multiplier`) and proc synergies.
+3. **Zero Hotkey Bloat:** Every active combat verb lives on **WASD, Space, Shift/Ctrl, LMB (Primary), RMB (Weapon Alt-Fire / Sanguine Technique), F (Context Quick Melee / Slide Blood-Kick / Execution), and R (Active Blood Reload / Flourish)**. There are no `1-2-3-4-5` cooldown bars.
+4. **Readable Brutalist Chaos:** Environments are stark, monolithic, monochromatic brutalist stone and iron. Enemies, projectiles, and blood bursts are rendered in high-contrast **Arterial Crimson (`#E60012`)**, **Hellfire Orange (`#FF4500`)**, and **Occult Gold (`#FFD700`)** so the player can read 150+ simultaneous threats at 30 m/s.
 
 ---
 
@@ -257,150 +259,186 @@ When in `AIR` or `WALL_RUN` with forward input (`W` held):
 
 ---
 
-## 3. Weapon & Combat System (Data-Driven)
+## 3. Character Loadouts, Single-Weapon Rule & Combat System (Data-Driven)
 
-### 3.1 Minimalist Active Control Binding Matrix (Zero Hotkey Bloat)
+### 3.0 Single-Weapon Run & Decoupled Character vs. Weapon Loadouts (*Brotato*-Style)
 
-Every action in the game maps to the core FPS muscle-memory cluster. **There are zero ability cooldown keys (`1`, `2`, `3`, `4`).**
+`SANGUINE_RUNNER` strictly enforces a **Single-Weapon Run** architecture paired with **Decoupled Character Loadouts**:
 
-| Input | Ground / Air Action | While Sliding (`Ctrl` / `Shift`) | Context / Synergy Behavior |
+1. **Single-Weapon Run Rule (Zero Inventory Clutter / Zero Tier Merging):**
+   - There is **no multi-weapon inventory**, **no mid-run weapon switching**, and **no Tier 1–5 weapon merging**.
+   - The player selects **1 Signature Weapon** at the start of the run and wields it exclusively through Wave 20+.
+   - Progression and build variety emerge 100% from infinite passive stacking (`+kinetic/occult dmg`, `+bleed`, `+pierce`, `+melee_reach_multiplier`, `+attack_speed`) and proc synergies that transform how that single weapon behaves.
+   - **Smart Altar Tag Filtering:** Because the player carries a single weapon, the Blood Altar automatically filters out incompatible weapon-archetype perks (e.g., ranged *Spread Reduction* or *Bullet Velocity* cards will never pollute the draft pool when wielding the *Occult Scythe* or *Alucard Sword*, and *Melee Reach* cards will not appear when wielding *The Jackal & Casull*).
+
+2. **Decoupled Character / Bloodline System (`CharacterDefinition`):**
+   - Characters (**Vampiric Bloodlines**) define **only stat offsets** (e.g., more Max HP, higher Life Leech, bonus Crit Chance, higher Armor, or negative trade-offs) and a **unique Bloodline Passive**. Characters **do NOT have hardcoded weapons**.
+   - Instead, each Character defines an `allowedStartingWeapons` array of **2–3 selectable weapons** drawn from the shared Master Armory. Weapons are shared across multiple classes where their fantasies overlap:
+
+| Bloodline / Character | Stat Offsets | Unique Bloodline Passive | Allowed Starting Weapon Pool (Pick 1) |
 | :--- | :--- | :--- | :--- |
-| **WASD + Mouse** | Omnidirectional Move + Aim | Steer Slide Trajectory ($\pm 25^\circ$/s) | High speed charges **Momentum Gauge** |
-| **Space** | Jump / Bhop / Wall-Kick / Mantle | **Slide-Jump Boost** | Preserves & amplifies horizontal momentum |
-| **Shift / Ctrl** | Enter Ground Slide (or Air Crouch) | Hold to Maintain Slide | Collapses hitbox height by $50\%$ |
-| **LMB (Primary)** | Weapon Primary Fire / Slash | Full-accuracy firing while sliding | Triggers `OnFire` and `OnHit` perk chains |
-| **RMB (Secondary)** | **Weapon Alt-Fire / Sanguine Technique** | Augmented Slide Alt-Fire | Consumes **Blood Gauge** or weapon charge; zero arbitrary UI skill bars |
-| **F (Quick Melee)** | **Sanguine Claw / Hilt Bash** (Fast) | **Vampiric Blood-Kick** (Heavy Launch/Trip) | On **Staggered** Enemy: Instant **Sanguine Execution** ($+25\%$ HP & Blood Burst) |
-| **Q / Scroll / E** | Quick-Swap Weapons | Quick-Swap Weapons | Swapping triggers **Weapon-Swap Cancel** & resets swing/reload recovery |
-| **R** | Manual Reload / Flourish | Manual Reload / Flourish | Timed press during reload bar = **Active Blood Reload** ($+25\%$ DMG on next mag) |
+| **Tepes Aristocrat** (*Alucard Archetype*) | `+20% Crit Chance`, `+15% All DMG`, `-15% Max HP` | **Hellsing Arrogance:** Headshots, Parries, and Sweet-Spot Crits restore $+8\text{ Blood}$ and grant $+15\%$ Move Speed for $3\text{ s}$. | `jackal_and_casull`, `alucard_sword`, `occult_scythe` |
+| **Nosferatu Leech-Lord** (*Hemomancer*) | `+35% Max HP`, `+25% Siphon / Leech`, `-10% Move Speed` | **Sanguine Gorge:** Overhealing converts $100\%$ into a decaying **Blood Barrier**; Point-Blank kills trigger a $3\text{ m}$ Blood Nova. | `stake_and_hammer`, `alucard_sword`, `trench_shotgun` |
+| **Nightrunner Wraith** (*Velocity Assassin*) | `+20% Move Speed`, `+25% Slide & Wall-Kick Boost`, `+30% Melee Reach`, `-20% Armor` | **Phantom Momentum:** Every $1\text{ m/s}$ above base speed ($12.5\text{ m/s}$) grants $+2.5\%$ Attack Damage and $+1.5\%$ Evasion. | `alucard_sword`, `occult_scythe`, `jackal_and_casull` |
+| **Cathedral Juggernaut** (*Iron Executioner*) | `+50% Stagger / Poise DMG`, `+30 Armor`, `+25% AoE Size`, `-15% Attack Speed` | **Inquisitor's Wrath:** Breaking an enemy's poise or shattering armor releases a shockwave that staggers nearby enemies. | `stake_and_hammer`, `trench_shotgun`, `occult_scythe` |
 
----
-
-### 3.2 Data-Driven Weapon Schema (`WeaponDefinition`)
-
-All weapons are defined via declarative JSON/TypeScript schemas loaded into the `WeaponSystem` state machine.
-
-```json
-{
-  "$schema": "https://sanguine-runner.local/schemas/weapon.schema.json",
-  "id": "jackal_and_casull",
-  "displayName": "The Jackal & Casull",
-  "archetype": "DUAL_HEAVY_PISTOLS",
-  "slotIndex": 0,
-  "SwitchTimeSec": 0.12,
-  "holsterAutoReloadSec": 1.75,
-  "ammo": {
-    "magazineSize": 12,
-    "reloadDurationSec": 1.15,
-    "activeReloadWindow": [0.45, 0.62],
-    "usesBloodForAltFire": true,
-    "altFireBloodCost": 20
-  },
-  "primaryFire": {
-    "deliveryType": "HITSCAN",
-    "fireMode": "SEMI_AUTO_BUFFERED",
-    "fireRateRPM": 300,
-    "baseDamage": 45,
-    "headshotMultiplier": 2.5,
-    "staggerDamage": 38,
-    "headshotStaggerMultiplier": 3.0,
-    "pierceCount": 1,
-    "pierceDamageFalloff": 0.85,
-    "spreadDeg": 0.0,
-    "hitstopFrames": 2,
-    "recoil": {
-      "pitchKickDeg": 2.4,
-      "yawJitterDeg": 0.35,
-      "viewmodelKickBack": 0.14,
-      "springStiffness": 220.0,
-      "springDamping": 18.5
-    }
-  },
-  "altFire": {
-    "id": "twin_crucifix_execution_shot",
-    "description": "Fires both Casull (Silver Explosive) and Jackal (Armor-Piercing Mercury) simultaneously in a cross-pattern rail-slug that pierces all enemies and detonates staggered targets.",
-    "deliveryType": "HITSCAN_RAIL",
-    "cooldownSec": 1.5,
-    "baseDamage": 160,
-    "staggerDamage": 120,
-    "pierceCount": 99,
-    "hitstopFrames": 5,
-    "selfKnockbackImpulse": 3.5
-  },
-  "meleeSynergy": {
-    "slideKickBonusDamage": 50,
-    "parryCapable": false
-  }
+#### Character Loadout Schema (`CharacterDefinition`)
+```typescript
+export interface CharacterDefinition {
+  id: string;
+  name: string;
+  title: string;
+  statOffsets: Partial<Record<StatKey, number>>; // e.g., { maxHpFlat: 35, siphonOnHitPct: 0.25, moveSpeedPct: -0.10 }
+  passiveId: string;
+  passiveDescription: string;
+  allowedStartingWeaponIds: ('jackal_and_casull' | 'trench_shotgun' | 'stake_and_hammer' | 'alucard_sword' | 'occult_scythe')[];
 }
 ```
 
 ---
 
-### 3.3 The Four Signature Weapons — Deep Combat Design
+### 3.1 Minimalist Active Control Binding Matrix (Zero Hotkey Bloat)
 
-#### 1. **The Jackal & Casull (Dual Heavy Handcannons)**
+Because the player carries a **single weapon** for the entire run, not even weapon-swap keys are required during combat. Every combat action maps to the core FPS muscle-memory cluster with **zero cooldown skill bars (`1`, `2`, `3`, `4`)**:
+
+| Input | Ground / Air Action | While Sliding (`Ctrl` / `Shift`) | Context / Synergy Behavior |
+| :--- | :--- | :--- | :--- |
+| **WASD + Mouse** | Omnidirectional Move + Aim | Steer Slide Trajectory ($\pm 25^\circ$/s) | High speed charges **Momentum Multipliers** |
+| **Space / MWheel** | Jump / Bhop / Wall-Kick / Mantle | **Slide-Jump Boost** | Preserves & amplifies horizontal momentum |
+| **Shift / Ctrl / C** | Enter Ground Slide (or Air Crouch) | Hold to Maintain Slide | Collapses hitbox height by $50\%$ |
+| **LMB (Primary)** | Weapon Primary Fire / Melee Swing | Full-accuracy firing/cleaving while sliding | Triggers `OnFire`, `OnHit`, and `SweetSpot` perk chains |
+| **RMB (Secondary)** | **Weapon Alt-Fire / Sanguine Technique** | Augmented Slide Alt-Fire | Weapon-specific signature action (Parry, Shotgun-Jump, Twin-Snap, Reaper Hook, Stake Drive) |
+| **F (Quick Melee)** | **Sanguine Claw / Hilt Bash** (Fast) | **Vampiric Blood-Kick** (Bowling Launch!) | On **Staggered** Enemy: Instant **Vampiric Execution** ($+25\text{ HP}$ & Blood Burst) |
+| **R** | Active Blood Reload / Blade Flourish | Reload / Flourish while sliding | Timed press in gold window = **Active Blood Reload** ($+25\%$ DMG); cleanses blood on melee weapons |
+
+---
+
+### 3.2 Data-Driven Weapon Schema (`WeaponDefinition` — Ballistic & Differentiated Melee)
+
+All weapons are defined via declarative JSON/TypeScript schemas. **Melee weapons do NOT use generic point raycasts**; they define explicit cylindrical sector geometry (`reach`, `horizontal_arc`, `timing`, and optional `sweet_spot` zones) scaled dynamically by `melee_reach_multiplier`:
+
+```typescript
+export interface MeleeGeometryConfig {
+  reach: number;                    // Base outer radius in meters (e.g., 1.3m Stake, 2.5m Sword, 4.0m Scythe)
+  horizontal_arc: number;           // Horizontal cleave cone angle in degrees (e.g., 55°, 120°, 160°)
+  vertical_tolerance: number;       // Vertical cylinder half-height in meters (default 1.8m)
+  timing: {
+    windup_sec: number;             // Pre-hit telegraph / anticipation
+    active_window_sec: number;      // Active hurtbox sweep duration
+    recovery_sec: number;           // Post-swing follow-through before next swing
+  };
+  armorShredMultiplier?: number;    // e.g., 2.5x vs armored/shielded targets for Stake & Hammer
+  pointBlankNovaRadius?: number;    // Triggers crimson explosion on point-blank kill/stagger
+  sweet_spot?: {                    // Used by Occult Scythe
+    enabled: boolean;
+    min_reach_ratio: number;        // e.g., 0.65 (outer 35% of the blade is the Sweet-Spot ring)
+    max_reach_ratio: number;        // 1.00
+    tip_damage_multiplier: number;  // 3.0x damage on Sweet-Spot tip hit!
+    tip_bleed_stacks: number;       // +3 Hemorrhage Bleed stacks on tip hit
+    shaft_damage_multiplier: number;// 0.4x glancing damage if enemy is too close (<65% reach)
+    shaft_knockback_impulse: number;// Pushes close enemy outward into the Sweet-Spot radius!
+  };
+}
+```
+
+---
+
+### 3.3 The Master Armory — Ballistic & Differentiated Melee Weapons
+
+#### A. Ballistic Firearms
+
+##### 1. **The Jackal & Casull (Dual Heavy Handcannons)**
 * **Fantasy:** Alucard's iconic twin 13mm oversized semi-automatic combat pistols—one forged in blessed silver for demonic flesh, the other a blackened 16kg monstrosity firing mercury-core armor-piercing rounds.
 * **LMB (Alternating Rhythmic Semi-Auto):**
-  * **Casull (Right Hand - Odd Shots):** High flesh damage ($45$), $2.5\times$ headshot multiplier, applies a **Silver Brand** on target for $3\text{ s}$.
-  * **The Jackal (Even Shots):** Armor-piercing ($+50\%$ damage vs armored/heavy targets), **pierces 1 enemy by default**, massive stagger impulse ($38\text{ Poise DMG}$, $3\times$ on headshot). Shooting a **Silver Branded** enemy with The Jackal triggers a **Mercury Detonation** ($60$ AoE kinetic damage in $2.5\text{ m}$).
-* **RMB (Twin Cross-Burst / Coin-Style Weakpoint Snap):**
-  * Consumes $20\text{ Blood}$ (or 2 ammo) to fire both pistols simultaneously. If an enemy within a $6^\circ$ cone is **Staggered** or **Airborne** (from a Slide Blood-Kick), the shot automatically snaps to their cranium for a guaranteed **Obliteration Crit** ($240\text{ DMG}$ + blood fountain).
-* **Reload Mechanic:** Flip-catch dual magazine slam ($1.15\text{ s}$). Hitting `R` inside the Active Blood Window ($0.45\text{ s}–0.62\text{ s}$) infuses the magazines with Vitae, granting $+1\text{ Pierce}$ and $+25\%$ damage for the clip.
+  * **Casull (Right Hand - Odd Shots):** High flesh damage ($45$), $2.5\times$ headshot multiplier, applies a **Silver Brand** on target for $3.5\text{ s}$.
+  * **The Jackal (Left Hand - Even Shots):** Armor-piercing, **pierces 2 enemies by default**, massive stagger impulse ($44\text{ Poise DMG}$, $3\times$ on headshot). Shooting a **Silver Branded** enemy with The Jackal triggers a **Mercury Detonation** ($65$ AoE kinetic damage in $3.2\text{ m}$).
+* **RMB (Twin Cross-Burst / Weakpoint Snap):**
+  * Consumes $20\text{ Blood}$ (and 2 ammo) to fire both pistols simultaneously. Automatically snaps within an $8.5^\circ$ cone to the cranium of any **Staggered** or **Airborne** enemy for a guaranteed **Obliteration Crit** ($260\text{ DMG}$ + 4-frame hitstop + gib explosion).
+* **Reload Mechanic (`R`):** Flip-catch dual magazine slam ($1.10\text{ s}$). Hitting `R` inside the Active Blood Window ($40\%–65\%$) infuses the magazines with Vitae, granting $+1\text{ Pierce}$ and $+25\%$ damage.
 
-#### 2. **Trench Blood-Shotgun ("The Abattoir")**
+##### 2. **Trench Blood-Shotgun ("The Abattoir")**
 * **Fantasy:** Sawed-off double-drum brutalist trench shotgun that feeds on pressurized arterial mist and brass buckshot.
 * **LMB (Meat-Grinder Buckshot):**
   * Fires **12 fast physical pellets** ($v = 140\text{ m/s}$ swept-ray projectiles, $14\text{ DMG}$ per pellet = $168\text{ max base DMG}$, $7.5^\circ$ cone spread).
   * **Velocity Scaling:** Pellet damage increases by $+1.5\%$ for every $1\text{ m/s}$ of player velocity above $12.5\text{ m/s}$.
-  * **Point-Blank Meat-Hook Stagger:** Hitting an enemy within $3.5\text{ m}$ with $\ge 8$ pellets instantly shatters their poise and sprays **3 bonus Blood Orbs** on the spot.
 * **RMB (Pressurized Gore-Slug / Shotgun-Jump Impulse):**
-  * Condenses both barrels into a hyper-pressurized blood-concussion blast.
-  * **Kinetic Self-Knockback:** Applies an immediate recoil impulse of $\mathbf{I}_{\text{recoil}} = -14.5\text{ m/s} \cdot \hat{\mathbf{f}}_{\text{aim}}$ to the player when airborne or sliding. Firing downward while jumping launches the player $18\text{ m}$ into the air (**Shotgun-Jumping**); firing behind while bunny-hopping rockets horizontal speed to $26+\text{ m/s}$.
-* **Reload Mechanic:** Shell-by-shell rhythmic pump OR **Blood-Gorge Reload**: executing a staggered enemy (`F`) or sliding through a dying enemy instantly loads 2 shells directly into the chamber.
-
-#### 3. **Alucard Heirloom Greatsword ("Crissaegrim / Tepes")**
-* **Fantasy:** An impossibly long, black-iron gothic claymore etched with crimson runes, swung with effortless one-handed aristocratic disdain.
-* **LMB (3-Step Sweeping Cleave Combo):**
-  * Wide $135^\circ$ horizontal & diagonal arcs with a $4.2\text{ m}$ reach. Cleaves through **unlimited enemies** in the arc.
-  * Combo timings: Swing 1 ($0.28\text{ s}$, $65\text{ DMG}$) $\rightarrow$ Swing 2 ($0.28\text{ s}$, $75\text{ DMG}$) $\rightarrow$ Swing 3 Heavy Vortex Cleave ($0.42\text{ s}$, $130\text{ DMG}$, pulls enemies inward).
-  * **Passive Siphon on Kill:** Every enemy decapitated by the Greatsword directly restores **3 HP** and spawns **+30% Vitae Value**.
-* **RMB (Sanguine Aegis — Projectile Parry / Deflection Slash):**
-  * Performs an instant $0.22\text{ s}$ upward blood-slash with a generous **$180\text{ ms}$ Parry Window**.
-  * **Hitscan / Projectile Deflection:** Any enemy projectile (cultist blood-bolts, gargoyle fireballs) inside a $3.5\text{ m}$ front hemisphere during the parry window is **deflected directly back at the crosshair target at $300\%$ velocity and $400\%$ damage**, triggering a **4-frame Hitstop**, a gold/crimson flash, and restoring $25\%$ of the player's Blood Gauge.
-  * **Melee Parry:** Parrying a melee lunge instantly **Staggers** all enemies in a $5\text{ m}$ front cone.
-
-#### 4. **Occult Katana ("Muramasa Blood-Edge")**
-* **Fantasy:** A cursed, razor-thin obsidian nodachi that vibrates at ultrasonic occult frequencies, turning the user into a teleporting red blur.
-* **LMB (Hyper-Cadence Iaido Slashes):**
-  * Ultra-fast $0.14\text{ s}$ slashes ($4.4\text{ attacks/sec}$, $35\text{ DMG}$, $3.2\text{ m}$ reach).
-  * **Hemorrhage Stacking:** Every slash applies **1 Stack of Arterial Bleed** ($8\text{ DMG/sec}$ per stack, uncapped). Critical hits apply **2 Stacks**.
-* **RMB (Iaijutsu Blood-Dash Strike):**
-  * Lunges the player $11.0\text{ m}$ along the exact 3D camera aim vector $\hat{\mathbf{f}}_{\text{aim}}$ over $0.10\text{ s}$ ($110\text{ m/s}$ burst velocity, exiting at $15.0\text{ m/s}$).
-  * Slices through all enemies along the capsule path for $95\text{ DMG}$ and **ruptures all active Bleed stacks** on hit targets for an instant burst equal to $150\%$ of their remaining bleed damage.
-  * **Kill-Reset Mechanic (*Ghostrunner* Flow):** If the Blood-Dash Strike (or a slash within $0.5\text{ s}$ after dashing) kills at least one enemy, its cooldown ($2.2\text{ s}$) is **instantly refunded**.
+  * Condenses both barrels into a hyper-pressurized blood-concussion blast. Applies an immediate recoil impulse of $\mathbf{I}_{\text{recoil}} = -14.5\text{ m/s} \cdot \hat{\mathbf{f}}_{\text{aim}}$ to the player when airborne or sliding, enabling high-altitude **Shotgun-Jumping** and horizontal speed-rocketing ($26+\text{ m/s}$).
 
 ---
 
-### 3.4 Hitscan vs. Swept-Projectile Physics, Recoil, & Stagger Math
+#### B. Differentiated Melee Weapons (Explicit Hitbox Geometry & Timing)
 
-#### 1. Hitscan vs. Fast Swept Projectiles
-- **Hitscan Weapons (Jackal & Casull):** Cast a zero-time ray $\mathbf{R}(t) = \mathbf{o} + t\hat{\mathbf{d}}$ from the camera eye origin $\mathbf{o}$. To support **Pierce Count ($P$)**, query all intersections along the ray, sort by distance $t_0 < t_1 < \dots < t_k$, and apply damage up to $P + 1$ targets. Visual tracer originates from the weapon muzzle socket $\mathbf{m}$ and converges to $\mathbf{R}(t_{\text{max}})$.
-- **Fast Projectiles (Shotgun Pellets, Enemy Cultist Orbs, Deflected Bolts):** Never use naive point-teleportation (`pos += vel * dt`), which tunnels through thin colliders at 120+ m/s. Every tick, cast a **Swept Sphere/Ray** from $\mathbf{p}_{t}$ to $\mathbf{p}_{t + \Delta t} = \mathbf{p}_t + \mathbf{v}_p \Delta t$:
+| Melee Weapon | Base `reach` | `horizontal_arc` | Timing (`windup / active / recovery`) | Core Geometric Identity & Combat Role |
+| :--- | :---: | :---: | :---: | :--- |
+| **Stake & Hammer** | **$1.3\text{ m}$** (Short) | **$55^\circ$** (Narrow Cone) | `0.07s / 0.06s / 0.20s` | **Point-Blank Armor Breaker:** Massive single-target & tight-cone poise shatter, $100\%$ armor penetration, and point-blank Blood Explosion on heavy hit/kill. |
+| **Alucard Sword** | **$2.5\text{ m}$** (Medium) | **$120^\circ$** (Wide Sweep) | `0.04s / 0.08s / 0.13s` | **Fluid Aristocratic Broadsword:** High-cadence sweeping cleaves, passive life siphon, and **Frontal Projectile Parry / Deflection** on `RMB`. |
+| **Occult Scythe** | **$4.0\text{ m}$** (Massive) | **$160^\circ$** (Reaper Arc) | `0.11s / 0.12s / 0.22s` | **Positional Sweet-Spot Harvester:** Outer blade tip ($2.6\text{ m}–4.0\text{ m}$) deals **$3.0\times$ DMG + Heavy Bleed**; inner shaft ($<2.6\text{ m}$) deals weak damage + knockback push into the Sweet-Spot ring. |
+
+##### 3. **Stake & Hammer ("Van Helsing's Crucifixion Mallet")**
+* **Geometry & Timing:** Short `reach = 1.3m`, focused `horizontal_arc = 55°`, heavy impact timing (`0.07s` windup, `0.06s` active crush, `0.20s` recovery).
+* **LMB (Crucifixion Strike):**
+  * Drives an iron-shod ash stake with a brutalist sledgehammer. Deals $85\text{ Base DMG}$ and a massive **$115\text{ Poise DMG}$** (instantly staggering almost any non-boss enemy in 1 hit).
+  * **Armor Shatter:** Ignores $100\%$ of enemy armor/shields (instantly splinters *Iron Inquisitor* tower shields) and deals $+75\%$ bonus damage to armored/staggered targets.
+  * **Point-Blank Blood Detonation:** Every kill or Stagger-Break triggers a violent **$3.0\text{ m}$ Point-Blank Blood Explosion** ($55\text{ AoE DMG}$ + arterial mist), rewarding hyper-aggressive face-tanking and slide-ins.
+* **RMB (Impaling Stake-Drive Lunge):**
+  * Lunges $6.5\text{ m}$ forward (`0.11s`), driving the stake straight through the primary target and launching them backward as an impaled projectile that pins into walls or detonates on impact for $180\text{ AoE DMG}$ (`4-frame` hitstop + `+5.5°` FOV punch).
+
+##### 4. **Alucard Sword ("Heirloom Broadsword / Crissaegrim")**
+* **Geometry & Timing:** Balanced `reach = 2.5m`, wide `horizontal_arc = 120°`, fluid high-cadence timing (`0.04s` windup, `0.08s` active sweep, `0.13s` recovery = $4.0\text{ swings/sec}$).
+* **LMB (Aristocratic Fluid Sweep Combo):**
+  * Effortless one-handed horizontal and diagonal broadsword arcs that cleave **all enemies** inside the $2.5\text{ m}$, $120^\circ$ sector ($50\text{ DMG}$, $32\text{ Poise DMG}$, $+1\text{ Bleed stack}$).
+  * **Momentum & Siphon Synergy:** Moving above $16\text{ m/s}$ (or sliding/wall-running) increases Crit Chance by $+35\%$, and every kill siphons **3 HP** directly to the player.
+* **RMB (Sanguine Aegis — Frontal Projectile Parry & Deflection Slash):**
+  * Opens a **$180\text{ ms}$ Frontal Parry Window** across the $120^\circ$ arc:
+    * **Projectile Deflection:** Any enemy projectile inside the $2.8\text{ m}$ front sector is **deflected directly back toward the crosshair at $300\%$ velocity and $400\%$ damage**, triggering a **4-frame Hitstop**, an Occult Gold flash, and restoring $25\text{ Blood}$.
+    * **Dash-Counter:** If used while sliding or airborne without an incoming projectile, executes a rapid $8.5\text{ m}$ **Phantom Thrust** (`kill-reset` cooldown refund on kill).
+
+##### 5. **Occult Scythe ("Harvester of Vitae")**
+* **Geometry & Timing:** Massive `reach = 4.0m`, sweeping `horizontal_arc = 160°`, deliberate reaping rhythm (`0.11s` windup, `0.12s` active sweep, `0.22s` recovery).
+* **LMB (Annular Sweet-Spot Reap):**
+  * Evaluates each enemy's horizontal distance $d$ relative to the effective reach $R_{\text{eff}} = 4.0\text{ m} \cdot (1 + \sum \text{melee\_reach\_multiplier})$:
+    1. **Outer Blade Tip — Sweet-Spot Ring ($d \in [0.65 R_{\text{eff}}, \; 1.00 R_{\text{eff}}]$, base $2.6\text{ m}–4.0\text{ m}$):**
+       * The curved obsidian crescent slices through the target's neck/vital arteries for **$3.0\times$ Base Damage ($55 \times 3 = 165\text{ DMG}$)**, applies **3 Stacks of Hemorrhage Bleed**, triggers a **3-frame Directional Hitstop**, and plays a resonant golden-crimson reaper chime!
+    2. **Inner Wooden/Iron Shaft Zone ($d < 0.65 R_{\text{eff}}$, base $< 2.6\text{ m}$):**
+       * Enemies crowding too close are struck by the scythe's haft for glancing **$0.4\times$ Damage ($22\text{ DMG}$)**, zero bleed, and a **strong outward knockback impulse ($9.5\text{ m/s}$)** that shoves them back into the $[0.65 R_{\text{eff}}, 1.00 R_{\text{eff}}]$ Sweet-Spot ring for the follow-up swing!
+* **RMB (Reaper's Pendulum Backstep / Hook):**
+  * Sweeps a $4.5\text{ m}$ crimson energy crescent while propelling the player $6.0\text{ m}$ backward (or upward if airborne), instantly spacing the player at the exact **$3.2\text{ m}$ Sweet-Spot distance** from pursuing melee packs and rupturing $100\%$ of active Bleed stacks on enemies caught in the outer tip!
+
+---
+
+### 3.4 Differentiated Melee Sector Math, Hitscan, Recoil, & Stagger
+
+#### 1. Differentiated Melee Hitbox Mathematics (Cylindrical Sector & Sweet-Spot Annulus)
+Let $\mathbf{p}_{\text{player}}$ be the player's origin, $\hat{\mathbf{f}}_{xz}$ be the horizontal aim forward vector, and $M_{\text{reach}} = 1 + \sum \text{melee\_reach\_multiplier}$ be the player's current reach scalar:
+
+$$R_{\text{eff}} = \text{reach}_{\text{base}} \cdot M_{\text{reach}}$$
+
+For each active enemy $i$ with center $\mathbf{p}_i$ and capsule radius $r_i$:
+1. **Horizontal Distance & Effective Contact Band:**
+   $$\mathbf{d}_{xz} = (p_{i,x} - p_{\text{player},x}, \; 0, \; p_{i,z} - p_{\text{player},z}), \qquad d = \|\mathbf{d}_{xz}\|$$
+   Target is within radial reach if $d - r_i \le R_{\text{eff}}$ and $|\Delta y| \le \text{vertical\_tolerance}$.
+2. **Horizontal Arc Check ($\theta_{\text{arc}} = \text{horizontal\_arc}$):**
+   $$\frac{\mathbf{d}_{xz} \cdot \hat{\mathbf{f}}_{xz}}{d} \ge \cos\left(\frac{\theta_{\text{arc}}}{2} \cdot \frac{\pi}{180}\right)$$
+3. **Sweet-Spot Annulus Evaluation (for *Occult Scythe*):**
+   Let $\rho = \frac{d}{R_{\text{eff}}}$ be the normalized radial position:
+   $$\text{Zone}(\rho) = \begin{cases} \textbf{SWEET\_SPOT\_TIP} \; (3.0\times \text{DMG} + 3\text{ Bleed}) & \text{if } \rho \in [0.65, \; 1.05] \\ \textbf{INNER\_SHAFT} \; (0.4\times \text{DMG} + \text{Outward Knockback}) & \text{if } \rho < 0.65 \end{cases}$$
+
+#### 2. Hitscan vs. Fast Swept Projectiles
+- **Hitscan Weapons (Jackal & Casull):** Cast a zero-time ray $\mathbf{R}(t) = \mathbf{o} + t\hat{\mathbf{d}}$ from the camera eye origin $\mathbf{o}$. To support **Pierce Count ($P$)**, query all intersections along the ray, sort by distance $t_0 < t_1 < \dots < t_k$, and apply damage up to $P + 1$ targets.
+- **Fast Projectiles (Shotgun Pellets, Enemy Cultist Orbs, Deflected Bolts):** Every tick, cast a **Swept Sphere/Ray** from $\mathbf{p}_{t}$ to $\mathbf{p}_{t + \Delta t} = \mathbf{p}_t + \mathbf{v}_p \Delta t$:
   $$\text{Hit} = \text{SphereCast}\left(\mathbf{p}_t, \; \hat{\mathbf{v}}_p, \; \|\mathbf{v}_p\|\Delta t, \; r_{\text{proj}}\right)$$
 
-#### 2. Procedural Damped-Spring Recoil System
-We avoid disorienting hard camera teleports. Recoil uses a second-order critically/under-damped spring on a separate recoil offset $(\Delta \theta_{\text{pitch}}, \Delta \theta_{\text{yaw}})$ layered on top of raw mouse look:
+#### 3. Procedural Damped-Spring Recoil System
+Recoil uses a second-order critically/under-damped spring on a separate recoil offset $(\Delta \theta_{\text{pitch}}, \Delta \theta_{\text{yaw}})$ layered on top of raw mouse look:
 
 $$\ddot{\mathbf{r}} = -k_{\text{spring}} \mathbf{r} - c_{\text{damp}} \dot{\mathbf{r}}$$
 
-When a shot is fired, we inject an angular velocity impulse $\dot{\mathbf{r}} \leftarrow \dot{\mathbf{r}} + (\omega_{\text{pitch}}, \pm\omega_{\text{yaw}})$, causing the camera and 3D weapon viewmodel to kick sharply over $25\text{ ms}$ and smoothly settle back to center over $140\text{ ms}$.
-
-#### 3. Stagger States, Poise, & Context-Sensitive Executions
+#### 4. Stagger States, Poise, & Context-Sensitive Executions
 Every enemy has a **Poise Bar** ($P_{\text{current}} \in [0, P_{\text{max}}]$).
 - When $P_{\text{current}}$ reaches $0$:
   1. Enemy enters **`STAGGERED`** state for $2.2\text{ s}$ (flashes pulsing Crimson-Gold, kneels or reels backward, attack canceled).
-  2. Taking any **Slide Blood-Kick (`Slide + F`)** launches a staggered enemy backwards at $22\text{ m/s}$ as a **Living Bowling Ball**, dealing $110\text{ kinetic damage}$ and $100\text{ poise damage}$ to every enemy they collide with.
-  3. Pressing **`F` (Quick Melee)** within $4.0\text{ m}$ of a staggered enemy triggers a $0.18\text{ s}$ **Vampiric Execution Surge** (short dash-snap + visceral claw rip, $100\%$ i-frames during the $0.18\text{ s}$ snap, restores $15\text{ HP}$, and showers extra Vitae Orbs).
+  2. Taking any **Slide Blood-Kick (`Slide + F`)** launches a staggered enemy backwards at $24\text{ m/s}$ as a **Living Bowling Ball**, dealing $115\text{ kinetic damage}$ and $100\text{ poise damage}$ to every enemy they collide with.
+  3. Pressing **`F` (Quick Melee)** within $4.5\text{ m}$ of a staggered enemy triggers a $0.14\text{ s}$ **Vampiric Execution Surge** (short dash-snap + visceral claw rip, restores $25\text{ HP}$ & $30\text{ Blood}$, and explodes the target into low-poly gibs).
 
 ---
 
@@ -448,28 +486,103 @@ To maintain 120+ FPS with 150+ enemies on screen, enemy movement uses **2.5D Spa
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | **Fodder** | *Thrall Husk* | $3$ | $1$ | $40$ | $6.5\text{ m/s}$ | $20$ | Swarms in packs of 5–12. Slow melee lunge. Walking blood bags designed to be cleaved, shot-pierced, and kicked into crowds. |
 | **Rusher** | *Feral Nightstalker* | $7$ | $2$ | $65$ | $14.0\text{ m/s}$ | $30$ | Quadrupedal gothic ghoul. Bounds along walls and leaps at the player with a high-pitched metallic screech ($0.45\text{ s}$ telegraph). Forces continuous air-strafing/wall-running. |
-| **Ranged Cultist** | *Hemomancer Acolyte* | $10$ | $3$ | $85$ | $5.0\text{ m/s}$ | $35$ | Keeps $18\text{ m}$ distance, climbs elevated ledges. Fires glowing **Crimson Orbs** ($v = 24\text{ m/s}$) in 3-orb spreads—prime targets for **Greatsword Parry Deflection**. |
+| **Ranged Cultist** | *Hemomancer Acolyte* | $10$ | $3$ | $85$ | $5.0\text{ m/s}$ | $35$ | Keeps $18\text{ m}$ distance, climbs elevated ledges. Fires glowing **Crimson Orbs** ($v = 24\text{ m/s}$) in 3-orb spreads—prime targets for **Alucard Sword Parry Deflection**. |
 | **Area Denial** | *Censer Zealot* | $16$ | $5$ | $150$ | $6.0\text{ m/s}$ | $60$ | Swings a burning occult censer that leaves temporary corrupted floor zones, forcing the player onto walls and air routes. Explodes if killed via headshot. |
-| **Mid Bruiser** | *Iron Inquisitor* | $25$ | $6$ | $320$ | $8.5\text{ m/s}$ | $110$ | Carries a directional iron tower shield that blocks front non-piercing hitscan; vulnerable to **The Jackal**, **Katana Blood-Dash** through the back, or **Slide Blood-Kick** shield break. |
+| **Mid Bruiser** | *Iron Inquisitor* | $25$ | $6$ | $320$ | $8.5\text{ m/s}$ | $110$ | Carries a directional iron tower shield that blocks front non-piercing hitscan; vulnerable to **Stake & Hammer Armor Shatter**, **The Jackal** armor-piercing rounds, **Occult Scythe** wide-arc sweet-spot reaping, or **Slide Blood-Kick** shield break. |
 | **Heavy Juggernaut** | *Cathedral Executioner* | $55$ | $8$ | $850$ | $7.5\text{ m/s}$ | $240$ | $3.2\text{ m}$ tall armored colossus. Fires sweeping chains of hellfire projectiles and performs ground-slam shockwaves (jumpable ring). Drops a **Royal Vitae Heart** ($10\times$ Blood + 1 Free Relic). |
 
 ### 4.4 Enemy Stat Scaling Per Wave
 Enemy health and damage scale more gradually than spawn density through Wave 12 so the player feels their multi-kill power fantasy, then ramp exponentially in Wave 15+ Endless mode:
 
-$$\text{HP}_{\text{enemy}}(w) = \text{HP}_{\text{base}} \cdot \left(1 + 0.14(w - 1) + 0.018(w - 1)^2\right) \cdot \left(1.12\right)^{\max(0, w - 15)}$$
+$$\text{HP}_{\text{enemy}}(w, d) = \text{HP}_{\text{base}} \cdot M_{\text{HP}}(d) \cdot \left(1 + 0.14(w - 1) + 0.018(w - 1)^2\right) \cdot \left(1.12\right)^{\max(0, w - 15)}$$
 
-$$\text{DMG}_{\text{enemy}}(w) = \text{DMG}_{\text{base}} \cdot \left(1 + 0.08(w - 1)\right)$$
+$$\text{DMG}_{\text{enemy}}(w, d) = \text{DMG}_{\text{base}} \cdot M_{\text{DMG}}(d) \cdot \left(1 + 0.08(w - 1)\right)$$
+
+where $d \in \{0, 1, 2, 3, 4, 5\}$ is the selected **Danger / Corruption Tier**.
 
 ### 4.5 Wave Progression Pacing Table (Waves 1 to 20+)
 
 | Wave | Duration | Budget ($B_{\text{total}}$) | Active Cap ($N_{\text{cap}}$) | Dominant Composition & Pacing Feel |
 | :---: | :---: | :---: | :---: | :--- |
-| **Wave 1** | $25\text{ s}$ | $52$ | $21$ | **Deliberate & Readable:** $100\%$ *Thrall Husks*. Teaches bhop rhythm, headshots, and Slide Blood-Kicks. |
-| **Wave 3** | $35\text{ s}$ | $184$ | $35$ | **Vertical Awakening:** Introduces *Nightstalkers* & *Hemomancers*. Player starts deflecting projectiles and wall-running. |
+| **Wave 1** | $25\text{ s}$ | $52$ | $21$ | **Deliberate & Readable:** $100\%$ *Thrall Husks*. Teaches bhop rhythm, headshots/sweet-spots, and Slide Blood-Kicks. |
+| **Wave 3** | $35\text{ s}$ | $184$ | $35$ | **Vertical Awakening:** Introduces *Nightstalkers* & *Hemomancers*. Player starts parrying projectiles and wall-running. |
 | **Wave 6** | $50\text{ s}$ | $455$ | $56$ | **Tactical Pressure:** *Iron Inquisitors* & *Censer Zealots* join the swarm. Floor becomes hazardous; air/wall combat shines. |
-| **Wave 10** | $70\text{ s}$ | $918$ | $84$ | **First Cathedral Climax:** Dual *Cathedral Executioners* + relentless *Nightstalker* packs. First **Weapon Evolution** unlocked. |
+| **Wave 10** | $70\text{ s}$ | $918$ | $84$ | **First Cathedral Climax:** Dual *Cathedral Executioners* + relentless *Nightstalker* packs. First **Single-Weapon Eldritch Keystone** unlocked. |
 | **Wave 15** | $90\text{ s}$ | $1,648$ | $119$ | **Bullet-Hell Symphony:** Dense crossfire of 40+ *Hemomancer* orbs, *Elite Crimson Variants*, and passive player proc chains painting the arena red. |
 | **Wave 20+** | $90\text{ s}$ | $3,500+$ | $154–180$ | **Apocalyptic Vampire Godhood:** Screen-filling gothic bullet-hell. Player moves at $25+\text{ m/s}$, Orbiting Bats and Blood Wolves shred the flanks, and every kill triggers cascading blood novae. |
+
+---
+
+### 4.6 Difficulty & Corruption Modifiers (`Danger 0` to `Danger 5`)
+
+Before starting a run (alongside selecting the **Character / Bloodline** and **Single Weapon**), the player selects a **Danger / Corruption Tier (`Danger 0` to `Danger 5`)**, modeled after *Brotato*'s Danger system. Higher Danger tiers introduce new enemy behaviors, elite corruption mutators, and higher Vitae/Relic yields:
+
+```typescript
+export type DangerTier = 0 | 1 | 2 | 3 | 4 | 5;
+
+export interface DangerCorruptionConfig {
+  tier: DangerTier;
+  title: string;
+  enemyHpMultiplier: number;       // M_HP(d)
+  enemyDamageMultiplier: number;   // M_DMG(d)
+  spawnBudgetMultiplier: number;   // Multiplies B_total(w)
+  eliteSpawnChancePct: number;     // Chance for any spawned unit to become a Crimson Elite
+  vitaeRewardMultiplier: number;   // Bonus Blood Orb value to match higher density
+  corruptionRules: string[];
+}
+```
+
+| Danger Tier | Title | Enemy HP ($M_{\text{HP}}$) | Enemy DMG ($M_{\text{DMG}}$) | Budget Mult | Elite Chance | Cumulative Corruption Rules & Gameplay Mutators |
+| :---: | :--- | :---: | :---: | :---: | :---: | :--- |
+| **`Danger 0`** | *Initiate of Dusk* | $1.00\times$ | $1.00\times$ | $1.00\times$ | $0\%$ | Baseline *Sanguine Runner* pacing. Standard wave compositions and telegraph windows. |
+| **`Danger 1`** | *Blood Moon Rising* | $1.15\times$ | $1.15\times$ | $1.15\times$ | $5\%$ | **Crimson Elites** appear ($2.2\times\text{ HP}$, $+20\%\text{ speed}$, glowing arterial aura, drop $3\times\text{ Vitae}$). *Nightstalkers* & *Hemomancers* unlock 1 wave earlier. |
+| **`Danger 2`** | *Inquisition Crusade* | $1.30\times$ | $1.30\times$ | $1.30\times$ | $10\%$ | Enemy projectiles travel $+20\%$ faster. *Iron Inquisitors* spawn with fortified shields ($+50\%\text{ Poise}$). Wave 5 and Wave 15 gain an extra Mini-Boss *Executioner*. |
+| **`Danger 3`** | *Sanguine Famine* | $1.50\times$ | $1.45\times$ | $1.45\times$ | $16\%$ | **Thirst Decay:** Standing on the ground below $8.0\text{ m/s}$ for more than $2.5\text{ s}$ drains $2\text{ HP/s}$ (forces continuous parkour, wall-running, and bunny-hopping). |
+| **`Danger 4`** | *Abyssal Eclipse* | $1.75\times$ | $1.65\times$ | $1.65\times$ | $22\%$ | **Blood Moon Surges** occur every $9\text{ s}$ instead of $12\text{ s}$. Slain *Crimson Elites* rupture into 4 radial parryable Hellfire bolts on death. |
+| **`Danger 5`** | *Alucard's Nightmare* | $2.10\times$ | $1.90\times$ | $1.85\times$ | $30\%$ | **Cathedral Apocalypse:** Wave 10 & Wave 20 spawn twin **Arch-Inquisitor Lords**. All enemies gain $+15\%$ movement speed during Blood Moon Surges; $+50\%$ Vitae yield. |
+
+---
+
+### 4.7 Modular Map & Arena Architecture (`ArenaDefinition` Schema)
+
+To support multiple distinct Gothic Zones (and future map expansions) without coupling level geometry to `KinematicController` or `WaveDirector`, arenas are defined via a declarative **`ArenaDefinition`** schema and compiled at runtime by `ArenaBuilder`:
+
+```typescript
+export type SurfaceFlag = 'FLOOR' | 'WALL_RUNNABLE' | 'SLIDE_RAMP' | 'MANTLE_LEDGE' | 'JUMP_PAD' | 'HAZARD_ZONE';
+
+export interface ArenaBlockPrimitive {
+  id: string;
+  position: [number, number, number];
+  size: [number, number, number];
+  rotationYDeg?: number;
+  slopePitchDeg?: number;          // Non-zero creates sloped aqueduct ramps for slide-boosting
+  surfaceFlags: SurfaceFlag[];
+  materialPreset: 'OBSIDIAN_FLOOR' | 'BRUTALIST_SLATE' | 'BONE_TRIM' | 'CRIMSON_ALTAR';
+}
+
+export interface ArenaSpawnNode {
+  position: [number, number, number];
+  tier: 'GROUND' | 'UPPER_GALLERY' | 'BOSS_ALTAR';
+  jumpLinkTargets?: [number, number, number][]; // Pre-baked 3D trajectories for AI vertical traversal
+}
+
+export interface ArenaDefinition {
+  id: string;                      // e.g., 'CATHEDRAL_NAVE', 'SANGUINE_AQUEDUCTS', 'BASKERVILLE_COURTYARD'
+  name: string;
+  unlockCondition: string;         // e.g., 'DEFAULT', 'CLEAR_DANGER_1', 'CLEAR_DANGER_3'
+  bounds: [number, number, number];
+  fogColorHex: string;
+  ambientLightHex: string;
+  playerSpawn: [number, number, number];
+  blocks: ArenaBlockPrimitive[];
+  spawnNodes: ArenaSpawnNode[];
+}
+```
+
+* **Initial Modular Zone Roster:**
+  1. **`CATHEDRAL_NAVE` (*Cathedral of the Crimson Eclipse*):** Balanced multi-tier gothic nave with 8 central wall-run pillars, twin sloped blood-aqueducts, and wrap-around upper balconies.
+  2. **`SANGUINE_AQUEDUCTS` (*Subterranean Blood Cisterns*):** High-speed parkour arena dominated by long parallel wall-run trenches, steep slide-boost ramps, and central jump-pad spires.
+  3. **`BASKERVILLE_COURTYARD` (*Ruined Necropolis Keep*):** Wide open slaughter courtyard with destructible bone obelisks, elevated sniper bell-towers, and dense swarm sightlines.
 
 ---
 
@@ -515,15 +628,16 @@ $$\text{Count / Tier} = n + \begin{cases} 1 & \text{if } \text{rand}(0, 1) < r \
 
 ---
 
-### 5.2 Infinite Scaling Parameters (Kinetic & Occult Matrices)
+### 5.2 Infinite Scaling Parameters (Kinetic, Melee Geometry, & Occult Matrices)
 
 | Parameter | Domain | Scaling Formula | Overflow / Synergy Behavior |
 | :--- | :--- | :--- | :--- |
+| **Melee Reach Multiplier (`melee_reach_multiplier`)** | Melee Geometry | $R_{\text{eff}} = R_{\text{base}} \cdot (1 + \sum \text{Reach\%})$ | Scales physical hitbox sector radius for *Stake & Hammer*, *Alucard Sword*, and *Occult Scythe*, and proportionally expands the *Occult Scythe* **Sweet-Spot** outer annulus ($[0.65 R_{\text{eff}}, 1.00 R_{\text{eff}}]$). |
 | **Bullet Velocity** | Kinetic | $v_p = v_{\text{base}} \cdot (1 + \sum \Delta v\%)$ | $20\%$ of bonus Bullet Velocity\% is added directly to **Stagger Damage\%**. |
 | **Pierce Count** | Kinetic | $P = P_{\text{base}} + \lfloor \sum \Delta P \rfloor + \text{Bernoulli}(r)$ | Each pierced enemy increases the projectile's crit damage by $+15\%$ with *Executioner's Needle*. |
 | **Spread Reduction** | Kinetic | $\theta = \theta_{\text{base}} / (1 + \sum \text{Acc})$ | Above $100\%$ Spread Reduction, excess accuracy converts into **Weakpoint Magnet Cone ($+0.5^\circ$ per $25\%$)**. |
 | **Projectile Split** | Kinetic | $N_{\text{split}} = 1 + \lfloor S \rfloor + \text{Bernoulli}(r)$ | Splits fan out at $\Delta\phi = \min(12^\circ, \frac{2.5^\circ}{\text{Acc}})$ with zero damage penalty. |
-| **Siphon on Hit** | Occult | $p_{\text{heal}} = p_{\text{base}} \cdot \rho_{\text{weapon}} \cdot (1 + \sum \text{Siphon\%})$ | Healing above Max HP converts into an decaying **Overblood Barrier** (up to $50\%$ Max HP). |
+| **Siphon on Hit** | Occult | $p_{\text{heal}} = p_{\text{base}} \cdot \rho_{\text{weapon}} \cdot (1 + \sum \text{Siphon\%})$ | Healing above Max HP converts into a decaying **Overblood Barrier** (up to $50\%$ Max HP). |
 | **Bleed Tick Frequency** | Occult | $f_{\text{tick}} = 2.0\text{ Hz} \cdot (1 + \sum \text{Haste\%})$ | Accelerates how rapidly all active Hemorrhage stacks tick per second. |
 | **Magnetic Pickup Radius** | Occult | $R_{\text{mag}} = 4.5\text{ m} \cdot (1 + \sum \text{Mag\%})$ | Also increases the **Sanguine Aura** radius that slows/bleeds nearby enemies. |
 | **Blood Explosion on Death** | Occult | $\text{DMG}_{\text{nova}} = (35 + 0.15 \cdot \text{HP}_{\text{victim}}) \cdot (1 + \sum \text{Occult\%})$ | Radius scales logarithmically: $r_{\text{nova}} = 3.0\text{ m} \cdot \left(1 + 0.45 \ln(1 + \sum \text{Area\%})\right)$. |
@@ -532,22 +646,25 @@ $$\text{Count / Tier} = n + \begin{cases} 1 & \text{if } \text{rand}(0, 1) < r \
 
 ### 5.3 Schemas for Perks, Autonomous Familiars, & Pooled Blood Orbs
 
-#### A. Perk / Augment Schema (`PerkDefinition`)
+#### A. Perk / Augment Schema (`PerkDefinition`) & Single-Weapon Deck Filtering
+Because every run enforces the **Single-Weapon Rule**, the `AltarDraftEngine` pre-filters `PerkCatalog` at run start: universal perks (`KINETIC`, `OCCULT`, `MOVEMENT`, `FAMILIAR`, `BLOOD`) are combined **only** with weapon-specific augments matching the player's chosen starting `WeaponId` (e.g., choosing `OCCULT_SCYTHE` unlocks Scythe Sweet-Spot & Reap perks while excluding Pistol/Shotgun/Sword/Stake perks from polluting the draft pool).
+
 ```typescript
-export type PerkRarity = 'COMMON' | 'RARE' | 'EPIC' | 'ELDRITCH'; // ELDRITCH = Alucard Tier / Evolutions
+export type PerkRarity = 'COMMON' | 'RARE' | 'EPIC' | 'ELDRITCH'; // ELDRITCH = Alucard Tier / Single-Weapon Keystones
 
 export interface StatModifier {
   stat: 
     | 'moveSpeedPct' | 'slideBoostPct' | 'kineticDamagePct' | 'occultDamagePct'
-    | 'fireRatePct' | 'bulletVelocityPct' | 'pierceCount' | 'projectileSplit'
-    | 'spreadReductionPct' | 'critChancePct' | 'siphonOnHitPct' | 'bleedTickRatePct'
-    | 'magnetRadiusPct' | 'bloodNovaDamagePct' | 'maxHpFlat' | 'maxBloodDiceFlat';
+    | 'meleeReachMultiplierPct' | 'fireRatePct' | 'bulletVelocityPct' | 'pierceCount'
+    | 'projectileSplit' | 'spreadReductionPct' | 'critChancePct' | 'siphonOnHitPct'
+    | 'bleedTickRatePct' | 'magnetRadiusPct' | 'bloodNovaDamagePct'
+    | 'maxHpFlat' | 'armorFlat' | 'lifeLeechPct' | 'maxBloodDiceFlat';
   operation: 'ADD' | 'MULTIPLY';
   value: number;
 }
 
 export interface ProcHook {
-  trigger: 'ON_HIT' | 'ON_CRIT' | 'ON_KILL' | 'ON_SLIDE_KICK' | 'ON_WALL_JUMP' | 'ON_PARRY';
+  trigger: 'ON_HIT' | 'ON_CRIT' | 'ON_KILL' | 'ON_SWEET_SPOT_HIT' | 'ON_SLIDE_KICK' | 'ON_WALL_JUMP' | 'ON_PARRY';
   effectId: string;           // e.g., 'SPAWN_BLOOD_NOVA', 'ARC_LIGHTNING_VITAE', 'SUMMON_SEEKING_BAT'
   baseChance: number;         // Supports >1.0 multi-proc overflow
   procCoefficient: number;    // 0.0 to 1.0
@@ -559,7 +676,10 @@ export interface PerkDefinition {
   id: string;
   name: string;
   rarity: PerkRarity;
-  tags: ('KINETIC' | 'OCCULT' | 'MOVEMENT' | 'FAMILIAR' | 'BLOOD' | 'KATANA' | 'PISTOLS' | 'SHOTGUN' | 'GREATSWORD')[];
+  tags: (
+    | 'KINETIC' | 'OCCULT' | 'MOVEMENT' | 'FAMILIAR' | 'BLOOD'
+    | 'JACKAL_CASULL' | 'TRENCH_SHOTGUN' | 'STAKE_HAMMER' | 'ALUCARD_SWORD' | 'OCCULT_SCYTHE'
+  )[];
   maxStacks: number | null;   // null = infinite stacking
   weightMultiplier?: number;  // Default 1.0; dynamic tag-synergy weight multiplier
   description: string;
@@ -629,7 +749,7 @@ flowchart TD
 #### 1. Card Bench & Independent Per-Slot Rerolls
 * **3-Slot Bench (Expandable to 4):** The Altar presents **3 Perk/Augment cards** side-by-side (`Slot 0`, `Slot 1`, `Slot 2`; expandable to `4` slots via the *Chalice of Tepes* relic).
 * **Surgical Slot Isolation:** Every card slot possesses its own independent **Reroll trigger** and state (`HELD_ON_BENCH`, `LOCKED_PINNED`, `REROLLING`, `SELECTED`).
-  * If `Slot 0` contains a solid fallback (e.g., *Muramasa Serrated Edge* for the Occult Katana), the player simply leaves `Slot 0` on the table (or pins it) and rerolls **`Slot 1`** and **`Slot 2`** individually to hunt for an *Eldritch / Alucard Tier* synergy.
+  * If `Slot 0` contains a solid fallback for the player's chosen single weapon (e.g., *Crescent Grim-Tip* for the *Occult Scythe* or *Serrated Heirloom Edge* for the *Alucard Sword*), the player simply leaves `Slot 0` on the table (or pins it) and rerolls **`Slot 1`** and **`Slot 2`** individually to hunt for an *Eldritch / Alucard Tier* synergy.
 * **Duplicate & Discard Exclusion Rule (`sessionBanSet`):**
   * Rerolling a single slot adds its discarded `perkId` to `sessionBanSet`.
   * The new roll for that slot strictly excludes:
@@ -649,10 +769,10 @@ flowchart TD
 
 #### 3. Bad Luck Protection / Pity System & Rarity Escalation Math
 * **4-Tier Rarity Hierarchy:**
-  1. **`COMMON`** *(Bone Slate `#A09E97`)* — Core kinetic/occult stat foundations.
+  1. **`COMMON`** *(Bone Slate `#A09E97`)* — Core kinetic/occult/reach stat foundations.
   2. **`RARE`** *(Sanguine Crimson `#E60012`)* — Compound hybrids, proc hooks, and movement multipliers.
   3. **`EPIC`** *(Abyssal Violet `#9D00FF`)* — Autonomous Familiars (*Shadow Bats*, *Blood Wolves*), multi-split modifiers, and high-impact procs.
-  4. **`ELDRITCH` / Alucard Tier** *(Occult Gold `#FFD700`)* — Game-warping keystones, uncapped overflow converters, and Weapon Evolutions.
+  4. **`ELDRITCH` / Alucard Tier** *(Occult Gold `#FFD700`)* — Game-warping keystones, uncapped overflow converters, and Single-Weapon Ascensions.
 * **Dynamic Rarity Weight Equations (Wave $w$, Persistent Pity Counter $p$):**
   Every individual slot reroll increments `pityCounter` ($p \leftarrow p + 1$). Each point of $p$ drains weight from `COMMON` and injects it directly into higher rarities:
   $$W_{\text{Common}}(w, p) = \begin{cases} 0 & \text{if } p \ge 6 \\ \max\left(10, \; 70 - 2.0w - 8.5p\right) & \text{otherwise} \end{cases}$$
@@ -755,23 +875,23 @@ Because `SANGUINE_RUNNER` intentionally eschews hotkey skill bars (`1-2-3-4`), e
 1. **Directional Camera Shake, Micro-Hitstop & FOV Punch:**
    - **Micro-Hitstop (Freeze Frames):**
      - Standard Melee / Heavy Headshot: `2 frames` ($16.6\text{ ms}$) simulation pause on the weapon viewmodel and physics step while camera shake continues.
-     - Critical Katana Slash / Point-Blank Shotgun / Execution / Greatsword Parry: `3–4 frames` ($25\text{ ms}–33\text{ ms}$) freeze frame + subtle crimson screen-edge flash.
+     - Critical Melee Cleave / *Occult Scythe* Sweet-Spot Hit / *Stake & Hammer* Armor Shatter / Point-Blank Shotgun / Execution / *Alucard Sword* Parry: `3–4 frames` ($25\text{ ms}–33\text{ ms}$) freeze frame + subtle crimson screen-edge flash.
    - **Discrete FOV Punch:**
-     - Heavy shots (*Jackal & Casull Twin Cross-Burst*, *Shotgun Gore-Slug*, *Katana Blood-Dash*) inject an immediate **`+3.5°` to `+6.5°` FOV Punch** on top of velocity FOV, decaying back over $110\text{ ms}$ via a critically damped spring.
+     - Heavy shots (*Jackal & Casull Twin Cross-Burst*, *Shotgun Gore-Slug*, *Stake & Hammer Impale*, *Occult Scythe Reap*) inject an immediate **`+3.5°` to `+6.5°` FOV Punch** on top of velocity FOV, decaying back over $110\text{ ms}$ via a critically damped spring.
    - **Directional Trauma Shake:**
      - Combines a directional recoil/impact jolt along the hit vector with quadratic trauma decay ($\text{ShakeAngle} = \text{MaxAngle} \cdot \text{Trauma}^2 \cdot \text{Noise}(t)$).
 2. **Audio Layering & Random Pitch Variation (`AudioManager`):**
    - Sound is 50% of boomer-shooter impact. Every sound effect is synthesized/layered from 3 components (*Low Sub-Bass Punch* + *Mid Mechanical/Flesh Transient* + *High Metallic/Gothic Tail*).
-   - **Mandatory Pitch Variation ($\pm 5\%$):** Every gunshot, sword slash, blood splat, orb pickup, and footstep applies a randomized frequency/playback multiplier $p_{\text{rand}} \sim \mathcal{U}(0.95, 1.05)$ so high-fire-rate Wave 15+ barrages feel organic and never cause ear fatigue.
+   - **Mandatory Pitch Variation ($\pm 5\%$):** Every gunshot, sword slash, scythe reap, stake impact, blood splat, orb pickup, and footstep applies a randomized frequency/playback multiplier $p_{\text{rand}} \sim \mathcal{U}(0.95, 1.05)$ so high-fire-rate Wave 15+ barrages feel organic and never cause ear fatigue.
 3. **Dismemberment & Low-Poly Gibs (*Hellsing / Alucard* Gore):**
-   - Enemies killed by Critical Hits, Headshots, Katana Blood-Dashes, Slide Blood-Kicks, or Point-Blank Shotgun blasts do not merely fall over—they **violently rupture into 6–12 low-poly crimson gib chunks** (torso shards, skulls, limbs) and arterial mist.
+   - Enemies killed by Critical Hits, Headshots, *Stake & Hammer* Impales, *Occult Scythe* Sweet-Spot Reaps, Slide Blood-Kicks, or Point-Blank Shotgun blasts do not merely fall over—they **violently rupture into 6–12 low-poly crimson gib chunks** (torso shards, skulls, limbs) and arterial mist.
    - Gibs bounce off floor/walls with fast ballistic gravity and **rapidly shrink and despawn over `1.2s–1.8s`**, delivering maximum visual brutality with zero lingering scene clutter.
 4. **Minimalist Diegetic HUD:**
    - Center crosshair integrates **2 thin concentric gothic arcs**:
      - Left Arc: **Blood / Sanguine Gauge** (for RMB Alt-Fire).
-     - Right Arc: **Active Reload / Dash Reset Indicator**.
-   - Bottom-Left: Brutalist crimson numeric readout for **HP (`100 // 100`)**, **Speedometer (`24.8 m/s`)**, and **Equipped Weapon / Ammo**.
-   - Top-Center: **Wave Countdown Timer** & **Vitae Level Bar**.
+     - Right Arc: **Active Reload / Sweet-Spot Range Indicator**.
+   - Bottom-Left: Brutalist crimson numeric readout for **HP (`100 // 100`)**, **Speedometer (`24.8 m/s`)**, and **Single Equipped Weapon / Ammo**.
+   - Top-Center: **Wave Countdown Timer**, **Danger Tier Badge (`D0–D5`)**, & **Vitae Level Bar**.
 
 ---
 
@@ -791,7 +911,7 @@ To sustain a locked 120+ FPS when hundreds of projectiles, blood bursts, gibs, a
    - Instead, each enemy computes a direct horizontal pursuit vector toward the player $\hat{\mathbf{d}}_{\text{toPlayer}}$ combined with a lightweight **2D Spatial Hash Grid Boid Separation vector** $\mathbf{s}_{\text{boid}}$.
    - **Interleaved Tick Scheduling:** Separation queries against neighboring cells execute only once every 4 physics ticks per enemy (`enemyIndex % 4 === tickCounter % 4`), caching $\mathbf{s}_{\text{boid}}$ for the intervening 3 ticks while integrating velocity every tick. This reduces swarm AI CPU overhead by **$75\%$**.
 3. **Batched / Accumulating Floating Damage Numbers (`DamageNumberBatcher`):**
-   - To prevent 100 overlapping text nodes during rapid Katana combos, shotgun pellet hits, or high-frequency Bleed ticks, floating damage numbers are **batched per target (`targetId`)**:
+   - To prevent 100 overlapping text nodes during rapid melee combos, shotgun pellet hits, or high-frequency Bleed ticks, floating damage numbers are **batched per target (`targetId`)**:
    - If target $E_i$ already has an active floating number spawned within the last **`350 ms`**, new damage is **added directly to the existing number** ($\text{DisplayedDMG} \leftarrow \text{DisplayedDMG} + \Delta\text{DMG}$), resetting its hold timer, bumping its font scale (`1.0x -> 1.45x`), and escalating its color (`Bone -> Crimson -> Occult Gold`) rather than spawning a duplicate label.
 
 ---
@@ -809,81 +929,79 @@ To sustain a locked 120+ FPS when hundreds of projectiles, blood bursts, gibs, a
 ```text
 g:/Lowkey/
 ├── GAME_PLAN.md
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
 ├── index.html
 └── src/
-    ├── main.ts                        # Bootstrapping, 120Hz fixed loop & render interpolator
+    ├── main.js                        # Bootstrapping, 120Hz fixed loop & render interpolator
     ├── core/
-    │   ├── InputManager.ts            # Raw mouse look, buffered jump/slide/fire inputs
-    │   ├── EventBus.ts                # Zero-alloc typed combat & proc event dispatcher
-    │   └── ObjectPool.ts              # Generic SoA & InstancedMesh ring buffers
+    │   ├── InputManager.js            # Raw mouse look, buffered jump/slide/fire inputs (zero weapon-swap bloat)
+    │   └── CameraRig.js               # Procedural FOV warp, FOV punch, trauma shake, head-bob & wall-tilt
     ├── physics/
-    │   ├── KinematicController.ts     # HFSM (Idle, Run, Slide, WallRun, Air, Mantle)
-    │   ├── MovementMath.ts            # Quake air-strafe, friction, wall-run ray fan, Bezier mantle
-    │   └── ArenaBuilder.ts            # Procedural brutalist gothic cathedral & jump-pad geometry
+    │   ├── Vec3.js                    # Zero-alloc 3D vector math utilities
+    │   ├── MovementConfig.js          # Tunable constants for ground, air-strafe, slide, wall-run & mantle
+    │   ├── CollisionWorld.js          # Swept AABB/Capsule collision & raycasting against arena geometry
+    │   └── KinematicController.js     # HFSM (Idle, Run, Slide, WallRun, Air, Mantle)
+    ├── world/
+    │   ├── ArenaGeometryData.js       # Modular ArenaDefinitions (Cathedral Nave, Sanguine Aqueducts, etc.)
+    │   └── ArenaBuilder.js            # Procedural brutalist gothic geometry & jump-pad compiler
     ├── combat/
-    │   ├── WeaponSystem.ts            # Weapon state machine, active reload, holster auto-load
-    │   ├── WeaponDefinitions.ts       # JSON/TS configs for Jackal/Casull, Shotgun, Greatsword, Katana
-    │   ├── ProjectileManager.ts       # Hitscan pierce & swept-ray projectile pool + parry deflection
-    │   └── MeleeExecutionSystem.ts    # Slide Blood-Kick, Poise/Stagger, F-key Vampiric Execution
+    │   ├── CharacterCatalog.js        # Decoupled Bloodline classes (stat offsets, unique passives, allowedStartingWeapons)
+    │   ├── WeaponDefinitions.js       # Data-driven configs: Jackal/Casull, Shotgun, Stake & Hammer, Alucard Sword, Occult Scythe
+    │   ├── WeaponSystem.js            # Single-Weapon state machine, differentiated melee hitbox sectors & sweet-spot math
+    │   ├── VFXAndPoolManager.js       # Pre-allocated InstancedMesh pools (gibs, blood bursts, tracers, batched damage numbers)
+    │   └── TargetHuskManager.js       # Poise/Stagger husks, armor flags, Slide Blood-Kick bowling & Vampiric Execution
     ├── ai/
-    │   ├── WaveDirector.ts            # Credit budget curve, trickle/surge spawner, wave timer
-    │   ├── EnemySwarmManager.ts       # SoA enemy state, Boids/Flow-field steering, 6 archetypes
-    │   └── FamiliarSystem.ts          # Autonomous Shadow Bats, Spectral Skulls, Blood Wolves
+    │   ├── WaveDirector.js            # Credit budget curve, trickle/surge spawner, Danger 0-5 corruption mutators
+    │   ├── EnemySwarmManager.js       # SoA enemy state, interleaved Boids separation, 6 gothic archetypes
+    │   └── FamiliarSystem.js          # Autonomous Shadow Bats, Spectral Skulls, Blood Wolves
     ├── progression/
-    │   ├── ScalingEngine.ts           # Additive/Multiplicative/Hyperbolic/Overflow stat aggregator
-    │   ├── PerkCatalog.ts             # 30+ kinetic, occult, movement, and evolution perks
-    │   ├── AltarDraftEngine.ts        # Slot-targeted rerolls (Q/W/E), Blood Dice bank, Blood Tithe & Pity math
-    │   └── BloodOrbManager.ts         # Spatial-hashed Vitae orb pool, magnetism, & auto-coalescence
+    │   ├── ScalingEngine.js           # Additive/Multiplicative/Hyperbolic/Overflow aggregator + melee_reach_multiplier
+    │   ├── PerkCatalog.js             # Single-weapon filtered kinetic, occult, melee geometry, & Eldritch keystone perks
+    │   ├── AltarDraftEngine.ts/js     # Per-card targeted rerolls (Q/W/E), Blood Dice bank, Blood Tithe & Pity math
+    │   └── BloodOrbManager.js         # Spatial-hashed Vitae orb pool, magnetism, & auto-coalescence
+    ├── audio/
+    │   └── AudioManager.js            # Procedural WebAudio 3-layer synth with mandatory ±5% random pitch variation
     └── rendering/
-        ├── ProceduralModels.ts        # Low-poly gothic viewmodels, enemies, and cathedral meshes
-        ├── PostProcessingPass.ts      # Bayer 4x4 dither, 15-bit quantize, FOV warp, chromatic aberration
-        ├── VFXManager.ts              # GPU-instanced blood splatters, hitstop, trauma camera shake
-        ├── SynthAudioEngine.ts        # Procedural WebAudio gothic synth gunshots, slashes, & chimes
-        └── HudAndAltarUI.ts           # Brutalist HUD + end-of-wave Blood Altar perk drafting UI
+        ├── ViewmodelRenderer.js       # Procedural 3D viewmodels for the chosen single weapon + recoil spring
+        ├── PostProcessingPass.js      # Bayer 4x4 dither, 15-bit quantize, FOV warp, chromatic aberration
+        └── HudAndAltarUI.js           # Pre-run Loadout Selector (Character + Single Weapon + Danger 0-5) & Blood Altar UI
 ```
 
 ---
 
-### Phase 1: Kinematic Movement Greybox & Procedural Camera
+### Phase 1: Kinematic Movement Greybox & Procedural Camera *(COMPLETED — Checkpoint 1)*
 * **Objective:** Nail the 120 Hz movement feel before adding a single enemy. Moving around the empty gothic arena must feel addictive on its own.
 * **Deliverables:**
-  1. Setup `Vite + TypeScript + Three.js + @dimforge/rapier3d-compat` workspace.
-  2. Build the **Brutalist Cathedral Arena** (`ArenaBuilder.ts`) with central slaughter floor, 8 gothic wall-run pillars, sloped blood-aqueducts, elevated walkways, and mantle ledges.
-  3. Implement `KinematicController.ts` with all 6 states (`IDLE`, `RUN`, `SLIDE`, `WALL_RUN`, `AIR`, `MANTLE`), coyote time ($120\text{ ms}$), jump buffer ($120\text{ ms}$), and bunny-hop friction bypass.
-  4. Implement `FirstPersonCamera` with wall-run roll ($\pm 12^\circ$), slide tilt ($4.5^\circ$), dynamic FOV warp ($95^\circ \to 113^\circ$), and live HUD **Speedometer (`m/s`)** + **State Readout**.
+  1. Build the **Brutalist Cathedral Arena** (`ArenaBuilder.js`) with central slaughter floor, gothic wall-run pillars, sloped blood-aqueducts, elevated walkways, and mantle ledges.
+  2. Implement `KinematicController.js` with all 6 states (`IDLE`, `RUN`, `SLIDE`, `WALL_RUN`, `AIR`, `MANTLE`), coyote time ($120\text{ ms}$), jump buffer ($120\text{ ms}$), and bunny-hop friction bypass.
+  3. Implement `CameraRig.js` with wall-run roll ($\pm 12^\circ$), slide tilt ($4.5^\circ$), dynamic FOV warp ($95^\circ \to 113^\circ$), and live HUD **Speedometer (`m/s`)** + **State Readout**.
 * **Acceptance Criteria:** Player can chain a ground slide $\rightarrow$ slide-jump $\rightarrow$ air-strafe $\rightarrow$ wall-run $\rightarrow$ wall-kick $\rightarrow$ ledge mantle maintaining $>20\text{ m/s}$ continuously at a locked 120 Hz simulation tick.
 
-### Phase 2: Core Combat, Stagger/Executions, & Initial Arsenal (Jackal/Casull + Occult Katana)
-* **Objective:** Establish visceral shooting, slicing, slide-kicking, and context-sensitive abilities with zero hotkey bloat.
+### Phase 2: Core Combat, Differentiated Melee Geometry, Juice, & Single-Weapon Loadout
+* **Objective:** Establish visceral shooting, differentiated melee sector geometry (*Stake & Hammer*, *Alucard Sword*, *Occult Scythe* sweet-spot), decoupled Character + Single-Weapon selection, and zero-lag object pooling.
 * **Deliverables:**
-  1. Implement `WeaponSystem.ts` with 3D low-poly procedural viewmodels, damped-spring recoil, and Active Blood Reload (`R`).
-  2. Implement **The Jackal & Casull** (LMB alternating Silver Brand / Mercury Pierce, RMB Twin Cross-Burst weakpoint snap).
-  3. Implement **Occult Katana** (LMB rapid bleed slashes, RMB 3D Iaijutsu Blood-Dash with kill-reset).
-  4. Implement `F` Quick Melee: **Sanguine Claw**, **Slide Blood-Kick** (launches staggered targets as bowling balls), and **Vampiric Execution** on staggered targets.
-  5. Add dummy target husks, micro-hitstop frames, and GPU-instanced arterial blood particles.
+  1. Implement `CharacterCatalog.js` and `WeaponDefinitions.js` enforcing the **Single-Weapon Run Rule** and **Brotato-Style Character vs. Weapon Decoupling**.
+  2. Implement `WeaponSystem.js` with 3D low-poly procedural viewmodels, damped-spring recoil, Active Blood Reload (`R`), and **Differentiated Melee Hitbox Geometry** (`reach`, `horizontal_arc`, `timing`, `melee_reach_multiplier`, and *Occult Scythe* Sweet-Spot `3x DMG + bleed` vs. inner-shaft knockback).
+  3. Implement `F` Quick Melee: **Sanguine Claw**, **Slide Blood-Kick** (launches staggered targets as bowling balls), and **Vampiric Execution** on staggered targets.
+  4. Implement `VFXAndPoolManager.js` (pre-allocated InstancedMesh Gibs, Blood Particles, Tracers, and Batched Damage Numbers) + `AudioManager.js` ($\pm 5\%$ random pitch variation) + micro-hitstop freeze frames (`2–4 frames`) and FOV punch.
 
-### Phase 3: Wave Director, AI Swarm, & Post-FX Retro Pipeline
-* **Objective:** Bring the arena to life with escalating waves of gothic horrors and the signature PSX/Boomer-Shooter visual pipeline.
+### Phase 3: Wave Director (`Danger 0–5`), AI Swarm, & Modular Arenas
+* **Objective:** Bring the arena to life with escalating waves of gothic horrors, `Danger 0–5` corruption tiers, modular arena loading, and the signature PSX/Boomer-Shooter visual pipeline.
 * **Deliverables:**
-  1. Implement `EnemySwarmManager.ts` using `THREE.InstancedMesh` and Boids steering for *Thrall Husks*, *Feral Nightstalkers*, *Hemomancer Acolytes*, and *Cathedral Executioners*.
-  2. Implement `WaveDirector.ts` with the Brotato-style wave timer ($25\text{ s} \to 90\text{ s}$), credit budget curve, and Blood Moon surges.
-  3. Integrate `PostProcessingPass.ts` (Bayer $4\times 4$ dithering, color quantization, and low-health chromatic aberration).
-  4. Add procedural WebAudio sound effects (`SynthAudioEngine.ts`) for gunshots, steel slashes, headshots, and wave bells.
+  1. Implement `EnemySwarmManager.js` using `THREE.InstancedMesh` and interleaved Boids separation (`1/4` ticks) for *Thrall Husks*, *Feral Nightstalkers*, *Hemomancer Acolytes*, *Iron Inquisitors*, and *Cathedral Executioners*.
+  2. Implement `WaveDirector.js` with the Brotato-style wave timer ($25\text{ s} \to 90\text{ s}$), credit budget curve, Blood Moon surges, and **`Danger 0` to `Danger 5` Corruption Modifiers**.
+  3. Support modular `ArenaDefinition` loading (`CATHEDRAL_NAVE`, `SANGUINE_AQUEDUCTS`, `BASKERVILLE_COURTYARD`).
+  4. Integrate `PostProcessingPass.js` (Bayer $4\times 4$ dithering, color quantization, and low-health chromatic aberration).
 
-### Phase 4: Roguelike Loop, Pooled Blood Orbs, & Blood Altar Drafting UI
-* **Objective:** Complete the full core loop from Wave 1 through infinite builds.
+### Phase 4: Roguelike Loop, Pooled Blood Orbs, & Per-Card Reroll Blood Altar UI
+* **Objective:** Complete the full core loop from pre-run Character/Weapon/Danger selection through infinite single-weapon builds.
 * **Deliverables:**
-  1. Implement `BloodOrbManager.ts` with 2,048 pre-allocated Vitae orbs, magnetic attraction physics, end-of-wave **Sanguine Harvest** vacuum, and spatial-hash auto-merging.
-  2. Implement `ScalingEngine.ts` with Additive, Multiplicative, Inverse-Rate, Hyperbolic, and Multi-Tier Overflow math.
-  3. Build `PerkCatalog.ts`, `AltarDraftEngine.ts`, and the **Blood Altar Draft UI** with **Card-Targeted Rerolls (`Q/W/E` or `Hover + R`)**, **Blood Dice** banking (`+2/wave`, cap `8–10`), exponential **Blood Tithe** paid rerolls ($50 \cdot 2^k\text{ Vitae}$), and **Bad Luck Protection Pity** escalation.
+  1. Implement `BloodOrbManager.js` with 2,048 pre-allocated Vitae orbs, magnetic attraction physics, end-of-wave **Sanguine Harvest** vacuum, and spatial-hash auto-merging.
+  2. Implement `ScalingEngine.js` with Additive, Multiplicative, Inverse-Rate, Hyperbolic, Multi-Tier Overflow math, and `melee_reach_multiplier` scaling.
+  3. Build `PerkCatalog.js` (filtered dynamically to the player's single chosen weapon), `AltarDraftEngine.js`, and the **Blood Altar Draft UI** with **Per-Card Targeted Rerolls (`Q/W/E` or `Hover + R`)**, **Blood Dice** banking (`+2/wave`, cap `8–10`), exponential **Blood Tithe** paid rerolls ($50 \cdot 2^k\text{ Vitae}$), and **Bad Luck Protection Pity** escalation.
 
-### Phase 5: Full Arsenal (Shotgun + Greatsword), Autonomous Familiars, & Infinite Polish
-* **Objective:** Deliver the complete 4-weapon roster, projectile parry mechanics, autonomous pets, and Wave 20+ bullet-hell stability.
+### Phase 5: Autonomous Familiars, Single-Weapon Eldritch Keystones, & Endless Polish
+* **Objective:** Deliver autonomous occult familiars, Wave 10+ Single-Weapon Eldritch Keystones, Boss encounters, and Wave 20+ bullet-hell stability.
 * **Deliverables:**
-  1. Implement **Trench Blood-Shotgun** (velocity-scaled pellets + RMB **Shotgun-Jump** recoil impulse).
-  2. Implement **Alucard Heirloom Greatsword** ($135^\circ$ cleaves + RMB **Projectile Parry/Deflection** window with $400\%$ return damage).
-  3. Implement `FamiliarSystem.ts` (**Shadow Bats**, **Spectral Skulls**, and **Blood Wolves**).
-  4. Add Weapon Evolutions at Wave 10+, Boss encounters, and performance profiling to verify $<8\text{ ms}$ frame time at Wave 20+.
+  1. Implement `FamiliarSystem.js` (**Shadow Bats**, **Spectral Skulls**, and **Blood Wolves**).
+  2. Add Wave 10+ **Single-Weapon Eldritch Keystones** (transformative passives for *Jackal & Casull*, *Trench Shotgun*, *Stake & Hammer*, *Alucard Sword*, and *Occult Scythe*).
+  3. Implement Boss encounters (*Arch-Inquisitor Lords*) and run full performance profiling to verify $<8\text{ ms}$ frame time at Wave 20+ (`Danger 5`).
