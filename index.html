@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SANGUINE_RUNNER // Phase 1: Kinematic Movement Greybox</title>
+  <style>
+    :root {
+      --bg-obsidian: #0b0b0e;
+      --panel-bg: rgba(14, 15, 20, 0.84);
+      --border-slate: #353746;
+      --crimson: #e60012;
+      --vermilion: #ff3b00;
+      --gold: #ffd700;
+      --bone: #e5e2dc;
+      --muted: #8e8c88;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-obsidian);
+      font-family: 'Consolas', 'Courier New', monospace;
+      color: var(--bone);
+    }
+
+    #viewport {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+    }
+
+    #speed-lines {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    /* CENTER DIEGETIC CROSSHAIR & GAUGE ARCS */
+    #crosshair-wrap {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 72px;
+      height: 72px;
+      z-index: 4;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .crosshair-dot {
+      width: 4px;
+      height: 4px;
+      background: var(--bone);
+      box-shadow: 0 0 6px var(--crimson);
+    }
+
+    .crosshair-tick {
+      position: absolute;
+      background: rgba(229, 226, 220, 0.75);
+    }
+    .tick-h { width: 10px; height: 2px; }
+    .tick-v { width: 2px; height: 10px; }
+    .tick-l { left: 16px; }
+    .tick-r { right: 16px; }
+    .tick-t { top: 16px; }
+    .tick-b { bottom: 16px; }
+
+    .gauge-arc {
+      position: absolute;
+      width: 3px;
+      height: 36px;
+      background: rgba(255, 255, 255, 0.14);
+      overflow: hidden;
+    }
+    .gauge-arc-left { left: 4px; }
+    .gauge-arc-right { right: 4px; }
+
+    .gauge-fill {
+      width: 100%;
+      height: 100%;
+      transform-origin: bottom center;
+      transition: transform 0.04s linear;
+    }
+    #hud-slide-bar { background: var(--crimson); }
+    #hud-wallrun-bar { background: var(--gold); }
+
+    /* TOP TELEMETRY & ZONE BAR */
+    #top-bar {
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      background: var(--panel-bg);
+      border: 1px solid var(--border-slate);
+      border-top: 2px solid var(--crimson);
+      padding: 8px 18px;
+      display: flex;
+      gap: 22px;
+      align-items: center;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      pointer-events: none;
+    }
+
+    .stat-chip span {
+      color: var(--muted);
+    }
+    .stat-chip strong {
+      color: var(--bone);
+      margin-left: 4px;
+    }
+    #hud-zone-name {
+      color: var(--gold);
+      font-weight: bold;
+    }
+
+    /* BOTTOM-LEFT SPEEDOMETER & MOVEMENT STATE HUD */
+    #bottom-left-hud {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      z-index: 5;
+      width: 310px;
+      background: var(--panel-bg);
+      border: 1px solid var(--border-slate);
+      border-left: 4px solid var(--crimson);
+      padding: 14px 16px;
+      pointer-events: none;
+    }
+
+    .speed-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+
+    #hud-speed-val {
+      font-size: 42px;
+      font-weight: 900;
+      color: var(--bone);
+      line-height: 1;
+      text-shadow: 0 0 12px rgba(230, 0, 18, 0.55);
+    }
+
+    .speed-unit {
+      font-size: 13px;
+      color: var(--crimson);
+      font-weight: bold;
+      margin-left: 4px;
+    }
+
+    .peak-meta {
+      text-align: right;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .peak-meta strong {
+      color: var(--gold);
+    }
+
+    .speed-bar-track {
+      width: 100%;
+      height: 6px;
+      background: #1b1c24;
+      margin: 10px 0 12px;
+      overflow: hidden;
+    }
+    #hud-speed-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--crimson), var(--vermilion), var(--gold));
+    }
+
+    .state-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+
+    #hud-state-pill {
+      padding: 3px 10px;
+      font-weight: bold;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      background: #232530;
+      color: var(--bone);
+      border: 1px solid var(--border-slate);
+    }
+    #hud-state-pill[data-state="RUN"] {
+      border-color: var(--bone);
+    }
+    #hud-state-pill[data-state="SLIDE"] {
+      background: rgba(230, 0, 18, 0.25);
+      border-color: var(--crimson);
+      color: #ff6b75;
+    }
+    #hud-state-pill[data-state="WALL_RUN"] {
+      background: rgba(255, 215, 0, 0.2);
+      border-color: var(--gold);
+      color: var(--gold);
+    }
+    #hud-state-pill[data-state="MANTLE"] {
+      background: rgba(255, 59, 0, 0.3);
+      border-color: var(--vermilion);
+      color: var(--gold);
+    }
+
+    /* TOP-RIGHT COURSE VERIFICATION CHECKLIST */
+    #checklist-panel {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 5;
+      width: 280px;
+      background: var(--panel-bg);
+      border: 1px solid var(--border-slate);
+      border-right: 3px solid var(--gold);
+      padding: 12px 14px;
+      font-size: 11px;
+      pointer-events: none;
+    }
+
+    .panel-title {
+      font-size: 11px;
+      font-weight: bold;
+      color: var(--crimson);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #262833;
+      padding-bottom: 4px;
+    }
+
+    .ms-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 0;
+      color: var(--muted);
+    }
+    .ms-box {
+      width: 10px;
+      height: 10px;
+      border: 1px solid var(--muted);
+      display: inline-block;
+    }
+    .ms-item.done {
+      color: var(--gold);
+      font-weight: bold;
+    }
+    .ms-item.done .ms-box {
+      background: var(--gold);
+      border-color: var(--gold);
+      box-shadow: 0 0 6px var(--gold);
+    }
+
+    /* BOTTOM-RIGHT CONTROLS & TELEPORT GUIDE */
+    #controls-panel {
+      position: fixed;
+      bottom: 20px;
+      right: 16px;
+      z-index: 5;
+      width: 280px;
+      background: var(--panel-bg);
+      border: 1px solid var(--border-slate);
+      padding: 12px 14px;
+      font-size: 11px;
+      line-height: 1.55;
+      pointer-events: none;
+    }
+    .key-tag {
+      color: var(--gold);
+      font-weight: bold;
+    }
+
+    /* POINTER LOCK START OVERLAY */
+    #pointer-lock-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      background: rgba(11, 11, 14, 0.82);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    #pointer-lock-overlay.hidden {
+      display: none;
+    }
+
+    .overlay-card {
+      background: #12131a;
+      border: 1px solid var(--crimson);
+      box-shadow: 0 0 36px rgba(230, 0, 18, 0.25);
+      padding: 28px 36px;
+      max-width: 520px;
+      text-align: center;
+    }
+    .overlay-card h1 {
+      font-size: 24px;
+      letter-spacing: 0.12em;
+      color: var(--crimson);
+      margin-bottom: 6px;
+    }
+    .overlay-card h2 {
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      color: var(--gold);
+      margin-bottom: 18px;
+    }
+    .overlay-card p {
+      font-size: 13px;
+      color: var(--bone);
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+    .cta-btn {
+      display: inline-block;
+      padding: 10px 24px;
+      background: var(--crimson);
+      color: var(--bone);
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div id="viewport"></div>
+  <canvas id="speed-lines"></canvas>
+
+  <!-- Diegetic Crosshair with Slide Cooldown (Left) & Wall-Run Stamina (Right) Arcs -->
+  <div id="crosshair-wrap">
+    <div class="gauge-arc gauge-arc-left"><div id="hud-slide-bar" class="gauge-fill"></div></div>
+    <div class="crosshair-tick tick-h tick-l"></div>
+    <div class="crosshair-tick tick-h tick-r"></div>
+    <div class="crosshair-tick tick-v tick-t"></div>
+    <div class="crosshair-tick tick-v tick-b"></div>
+    <div class="crosshair-dot"></div>
+    <div class="gauge-arc gauge-arc-right"><div id="hud-wallrun-bar" class="gauge-fill"></div></div>
+  </div>
+
+  <!-- Top Telemetry Bar -->
+  <div id="top-bar">
+    <div class="stat-chip">ZONE: <span id="hud-zone-name">1: Central Courtyard</span></div>
+    <div class="stat-chip"><span>FPS:</span><strong id="hud-fps-val">120</strong></div>
+    <div class="stat-chip"><span>120Hz TICK:</span><strong id="hud-phys-val">0.04 ms</strong></div>
+    <div class="stat-chip"><span>FOV:</span><strong id="hud-fov-val">95.0°</strong></div>
+    <div class="stat-chip"><span>TILT:</span><strong id="hud-roll-val">+0.0°</strong></div>
+    <div class="stat-chip"><span>POS:</span><strong id="hud-pos-val">0.0, 0.5, 14.0</strong></div>
+  </div>
+
+  <!-- Bottom-Left Speedometer & HFSM State -->
+  <div id="bottom-left-hud">
+    <div class="speed-row">
+      <div>
+        <span id="hud-speed-val">0.0</span><span class="speed-unit">m/s</span>
+      </div>
+      <div class="peak-meta">
+        <div>PEAK: <strong id="hud-peak-val">0.0</strong> m/s</div>
+        <div>BHOP CHAIN: <strong id="hud-bhop-val">0x</strong></div>
+      </div>
+    </div>
+    <div class="speed-bar-track">
+      <div id="hud-speed-bar"></div>
+    </div>
+    <div class="state-row">
+      <span>HFSM STATE</span>
+      <span id="hud-state-pill" data-state="IDLE">IDLE</span>
+    </div>
+  </div>
+
+  <!-- Top-Right Parkour Verification Checklist -->
+  <div id="checklist-panel">
+    <div class="panel-title">Phase 1 Kinematic Checklist</div>
+    <div id="ms-sprint" class="ms-item"><span class="ms-box"></span>Sprint Base Speed (12.5 m/s)</div>
+    <div id="ms-slide" class="ms-item"><span class="ms-box"></span>Ground Slide Boost (17.0 m/s)</div>
+    <div id="ms-slidejump" class="ms-item"><span class="ms-box"></span>Slide-Jump / Bhop (&gt;16.0 m/s)</div>
+    <div id="ms-slope" class="ms-item"><span class="ms-box"></span>Slope Slide Accel (&gt;20.0 m/s)</div>
+    <div id="ms-wallrun" class="ms-item"><span class="ms-box"></span>Wall-Run Horizontal Lock</div>
+    <div id="ms-wallkick" class="ms-item"><span class="ms-box"></span>Wall-Jump Impulse Transfer</div>
+    <div id="ms-mantle" class="ms-item"><span class="ms-box"></span>3-Ray Bezier Ledge Mantle</div>
+  </div>
+
+  <!-- Bottom-Right Controls & Sector Hotkeys -->
+  <div id="controls-panel">
+    <div class="panel-title">Movement &amp; Test Zones</div>
+    <div><span class="key-tag">WASD + Mouse</span> : Move &amp; Air-Strafe</div>
+    <div><span class="key-tag">Space / MWheel</span> : Jump / Bhop / Wall-Kick</div>
+    <div><span class="key-tag">Shift / Ctrl / C</span> : Ground Slide &amp; Slide-Hop</div>
+    <div><span class="key-tag">W + Air Ledge</span> : Auto Ledge Mantle</div>
+    <div style="margin-top:6px; border-top:1px solid #262833; padding-top:4px;">
+      <div><span class="key-tag">[1]</span> Courtyard &amp; Slide Gate</div>
+      <div><span class="key-tag">[2]</span> Parallel Wall-Run Chasm</div>
+      <div><span class="key-tag">[3]</span> Blood-Aqueduct Slide Ramps</div>
+      <div><span class="key-tag">[4]</span> Ledge Mantle Ziggurat</div>
+      <div><span class="key-tag">[5]</span> 100m Bhop Speedway &bull; <span class="key-tag">[R]</span> Reset</div>
+    </div>
+  </div>
+
+  <!-- Pointer Lock Prompt -->
+  <div id="pointer-lock-overlay">
+    <div class="overlay-card">
+      <h1>SANGUINE_RUNNER</h1>
+      <h2>PHASE 1 // KINEMATIC CONTROLLER &amp; MOVEMENT GREYBOX</h2>
+      <p>
+        120Hz Deterministic Physics &bull; Quake/Source Air-Strafe &bull; Slope Slide Momentum &bull; Lateral Raycast Wall-Run &bull; Bezier Ledge Mantle
+      </p>
+      <div class="cta-btn">CLICK TO ENGAGE POINTER LOCK</div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
