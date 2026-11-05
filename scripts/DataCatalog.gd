@@ -1,50 +1,87 @@
 class_name DataCatalog
 extends RefCounted
 
-## Data-driven catalog for Characters (Brotato-style decoupled loadouts),
-## Single-Weapon definitions (including Kalista/Twitch Expunge Stake & Hammer),
+## Data-driven catalog for the 3 Supernatural Characters (Risk of Rain 2 / Brotato Loadout),
+## 5 Shared Single-Weapon definitions (including Dual-Wield Stake & Hammer Expunge),
 ## Compounded Enemy Wave Scaling (+20% HP & +3% Speed/wave), Danger 0-5 tiers, and Perks.
 
+# Persistent cross-scene session & settings state
+static var selected_char_id: String = "vlad_vampire"
+static var selected_weapon_id: String = "stake_and_hammer"
+static var selected_danger_tier: int = 0
+
+static var master_vol_db: float = 0.0
+static var sfx_vol_db: float = -2.0
+static var music_vol_db: float = -6.0
+static var mouse_sens: float = 0.0024
+static var invert_y: bool = false
+static var is_fullscreen: bool = false
+
+const CHARACTER_ORDER: Array[String] = ["vlad_vampire", "fenrir_lycan", "malakor_lich"]
+
 const CHARACTERS: Dictionary = {
-	"tepes_aristocrat": {
-		"id": "tepes_aristocrat",
-		"name": "Tepes Aristocrat",
-		"title": "Alucard Bloodline",
-		"badges": ["+20% CRIT", "+15% DMG", "-15 HP"],
-		"passive_name": "Hellsing Arrogance",
-		"passive_desc": "Headshots, Parries & Sweet-Spot Crits restore +8 Blood and grant +15% Move Speed for 3s.",
-		"offsets": {"crit_chance": 0.20, "damage_mult": 0.15, "max_hp": -15.0},
-		"allowed_weapons": ["alucard_sword", "occult_scythe", "jackal_and_casull"]
+	"vlad_vampire": {
+		"id": "vlad_vampire",
+		"name": "Vlad Tepes",
+		"title": "Crimson Nosferatu Lord",
+		"race": "Ancient Vampire Aristocrat",
+		"attire": "High-collared crimson velvet Victorian trenchcoat, obsidian cape & silver-filigree shoulder pauldrons.",
+		"model_path": "res://assets/models/char_vampire_lord.obj",
+		"tex_path": "res://assets/textures/char_vampire_tex.png",
+		"accent_color": Color(0.95, 0.14, 0.22),
+		"badges": ["+35 MAX HP", "+25% LEECH", "+15 ARMOR"],
+		"stat_bars": {"HP": 0.90, "SPEED": 0.62, "CRIT": 0.65, "ARMOR": 0.80},
+		"passive_name": "Sanguine Aristocracy",
+		"passive_desc": "Overhealing converts into up to +50 Blood Barrier. Stake Expunge detonations & Sword Parries unleash a 4.0m Crimson Nova.",
+		"skills": [
+			{"name": "Sanguine Gorge (Bloodline Passive)", "desc": "25% innate Life-Leech on heavy strikes; overhealing builds a +50 Blood Barrier shield."},
+			{"name": "Impaler's Decree (Signature Synergy)", "desc": "War-Hammer Expunge detonations & Broadsword Parries trigger a 4.0m AoE Blood Nova."},
+			{"name": "Nosferatu Stride (Crypt Parkour)", "desc": "Blood-Slide (Ctrl/C) & Wall-Running across crypt stone walls preserve 100% momentum."}
+		],
+		"offsets": {"max_hp": 35.0, "life_leech": 0.25, "armor": 15.0},
+		"allowed_weapons": ["stake_and_hammer", "alucard_sword", "jackal_and_casull", "trench_shotgun"]
 	},
-	"nosferatu_leech": {
-		"id": "nosferatu_leech",
-		"name": "Nosferatu Leech-Lord",
-		"title": "Ancient Hemomancer",
-		"badges": ["+35 HP", "+25% LEECH", "-8% SPD"],
-		"passive_name": "Sanguine Gorge",
-		"passive_desc": "Overhealing grants up to +50 Blood Barrier; Stake Expunges & Point-Blank kills trigger a 3.8m Blood Nova.",
-		"offsets": {"max_hp": 35.0, "life_leech": 0.25, "move_speed_pct": -0.08},
-		"allowed_weapons": ["stake_and_hammer", "alucard_sword", "trench_shotgun"]
+	"fenrir_lycan": {
+		"id": "fenrir_lycan",
+		"name": "Fenrir Varcolac",
+		"title": "Carpathian Beast-Stalker",
+		"race": "Cursed Lycanthrope (Werewolf)",
+		"attire": "Hunched digitigrade wolf-hybrid wrapped in shredded dark leather hunter straps & broken iron dungeon shackles.",
+		"model_path": "res://assets/models/char_lycan_stalker.obj",
+		"tex_path": "res://assets/textures/char_lycan_tex.png",
+		"accent_color": Color(1.0, 0.52, 0.14),
+		"badges": ["+22% SPEED", "+20% CRIT", "+30% REACH"],
+		"stat_bars": {"HP": 0.68, "SPEED": 0.98, "CRIT": 0.92, "ARMOR": 0.45},
+		"passive_name": "Apex Predator Momentum",
+		"passive_desc": "Every 1 m/s above base speed (9.4 m/s) grants +3.5% Attack Damage and +1.5% Evasion. Ferocious melee reach & slide boost.",
+		"skills": [
+			{"name": "Apex Predator Momentum (Beast Passive)", "desc": "Every 1 m/s above 9.4 m/s grants +3.5% Attack Damage and +1.5% Evasion."},
+			{"name": "Rending Claws (Feral Precision)", "desc": "+20% Base Crit Chance and +30% Melee Reach for sweeping Scythe & Sword cleaves."},
+			{"name": "Lupine Pounce (Parkour Frenzy)", "desc": "+22% Base Movement Speed and +25% Blood-Slide impulse down crypt ramps."}
+		],
+		"offsets": {"move_speed_pct": 0.22, "crit_chance": 0.20, "melee_reach_pct": 0.30, "slide_boost_pct": 0.25, "armor": -10.0},
+		"allowed_weapons": ["alucard_sword", "occult_scythe", "trench_shotgun", "stake_and_hammer"]
 	},
-	"nightrunner_wraith": {
-		"id": "nightrunner_wraith",
-		"name": "Nightrunner Wraith",
-		"title": "Catacomb Velocity Assassin",
-		"badges": ["+20% SPD", "+30% REACH", "-15 ARMOR"],
-		"passive_name": "Phantom Momentum",
-		"passive_desc": "Every 1 m/s above base speed (9.4 m/s) grants +3.0% Attack Damage and +1.5% Evasion.",
-		"offsets": {"move_speed_pct": 0.20, "melee_reach_pct": 0.30, "armor": -15.0},
-		"allowed_weapons": ["alucard_sword", "occult_scythe", "jackal_and_casull"]
-	},
-	"cathedral_juggernaut": {
-		"id": "cathedral_juggernaut",
-		"name": "Cathedral Juggernaut",
-		"title": "Iron Executioner",
-		"badges": ["+50% STAGGER", "+30 ARMOR", "-12% RATE"],
-		"passive_name": "Inquisitor's Wrath",
-		"passive_desc": "Breaking poise, shattering shields, or War-Hammer Expunge releases a 5m seismic shockwave.",
-		"offsets": {"stagger_mult": 0.50, "armor": 30.0, "fire_rate_pct": -0.12},
-		"allowed_weapons": ["stake_and_hammer", "trench_shotgun", "occult_scythe"]
+	"malakor_lich": {
+		"id": "malakor_lich",
+		"name": "Malakor Moroi",
+		"title": "Abyssal Plague-Wraith",
+		"race": "Undead Necro-Inquisitor (Lich)",
+		"attire": "Floating skeletal arch-inquisitor in tattered violet-black vestments, exposed bone ribcage & spiked iron crown.",
+		"model_path": "res://assets/models/char_plague_lich.obj",
+		"tex_path": "res://assets/textures/char_lich_tex.png",
+		"accent_color": Color(0.65, 0.95, 0.28),
+		"badges": ["+20% FIRE RATE", "+35% VITAE XP", "+15% DMG"],
+		"stat_bars": {"HP": 0.58, "SPEED": 0.78, "CRIT": 0.82, "ARMOR": 0.60},
+		"passive_name": "Ossuary Harvest",
+		"passive_desc": "Critical hits and Sweet-Spot reaps inflict +2 Necrotic Bleed stacks. Slain foes yield +35% more Vitae XP for rapid Perk Drafting.",
+		"skills": [
+			{"name": "Ossuary Harvest (Lich Passive)", "desc": "+35% Vitae XP from all Blood Orbs and +40% Pickup Magnet Radius."},
+			{"name": "Necrotic Hemorrhage (Curse Synergy)", "desc": "+15% Base Damage, +20% Attack/Fire Rate, and +18 innate Bleed DPS on Crits."},
+			{"name": "Spectral Levitation (Wraith Stride)", "desc": "Glides effortlessly across catacomb wall-runs with +1 Pierce on ballistic weapons."}
+		],
+		"offsets": {"damage_mult": 0.15, "fire_rate_pct": 0.20, "vitae_mult": 0.35, "magnet_radius_pct": 0.40, "bleed_damage": 18.0, "pierce_bonus": 1.0, "max_hp": -10.0},
+		"allowed_weapons": ["occult_scythe", "jackal_and_casull", "stake_and_hammer", "alucard_sword"]
 	}
 }
 

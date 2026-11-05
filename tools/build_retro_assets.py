@@ -248,6 +248,92 @@ def build_textures():
         q_br=(230, 22, 32),
         seed=601,
     )
+    # Character 1: Vlad Tepes (Nosferatu Vampire Aristocrat) - Crimson velvet coat, pale flesh/silver, obsidian leather, ruby glow
+    make_atlas(
+        "char_vampire_tex.png",
+        q_tl=(128, 14, 24),
+        q_tr=(210, 202, 208),
+        q_bl=(24, 20, 28),
+        q_br=(250, 20, 38),
+        seed=701,
+    )
+    # Character 2: Varcolac (Carpathian Lycanthrope) - Dark lupine fur, bone claws/chains, bloodied leather harness, amber-red eyes
+    make_atlas(
+        "char_lycan_tex.png",
+        q_tl=(64, 48, 38),
+        q_tr=(188, 178, 158),
+        q_bl=(36, 24, 20),
+        q_br=(255, 110, 18),
+        seed=702,
+    )
+    # Character 3: Moroi (Abyssal Plague-Lich) - Necrotic violet-black shroud, bleached bone skull/ribs, dark iron crown, eldritch blood-green glow
+    make_atlas(
+        "char_lich_tex.png",
+        q_tl=(46, 26, 58),
+        q_tr=(202, 194, 172),
+        q_bl=(22, 24, 30),
+        q_br=(145, 245, 65),
+        seed=703,
+    )
+
+    # 6. dusk_tile_wall.png (64x64): Grimy blood-smeared cellar tiles (DUSK Main Menu aesthetic)
+    grid64 = [[(0, 0, 0, 255) for _ in range(w64)] for _ in range(h64)]
+    for y in range(h64):
+        for x in range(w64):
+            n = hash2d(x, y, 801)
+            grime = hash2d(x // 4, y // 4, 802)
+            blood = hash2d(x // 6, y // 5, 803)
+            # 16x16 dirty ceramic/stone tiles
+            grout = (x % 16 == 0) or (y % 16 == 0)
+            if grout:
+                r, g, b = 32, 24, 18
+            else:
+                base = int(92 - grime * 38 + (n - 0.5) * 16)
+                r = base + 14
+                g = int(base * 0.82)
+                b = int(base * 0.56)
+                # Dried blood smear patches
+                if blood > 0.72 and y > 14:
+                    r = int(r * 0.45 + 75)
+                    g = int(g * 0.25)
+                    b = int(b * 0.22)
+            grid64[y][x] = (r, g, b, 255)
+    write_png(os.path.join(TEX_DIR, "dusk_tile_wall.png"), w64, h64, grid64)
+
+    # 7. blood_splatter.png (64x64 RGBA): Persistent visceral floor/wall blood splatter decal
+    grid64 = [[(0, 0, 0, 0) for _ in range(w64)] for _ in range(h64)]
+    for y in range(h64):
+        for x in range(w64):
+            dx = (x - 31.5) / 28.0
+            dy = (y - 31.5) / 28.0
+            dist = math.sqrt(dx * dx + dy * dy)
+            angle = math.atan2(dy, dx)
+            ray_noise = math.sin(angle * 7.0) * 0.16 + math.cos(angle * 13.0) * 0.12
+            n = hash2d(x // 2, y // 2, 901) * 0.24
+            thresh = 0.68 + ray_noise + n
+            # Secondary satellite droplets
+            drop = hash2d(x // 3, y // 3, 902) > 0.86 and dist < 0.96
+            if dist < thresh or drop:
+                shade = hash2d(x, y, 903)
+                r = int(135 + (1.0 - min(1.0, dist)) * 65 - shade * 30)
+                g = int(8 + shade * 10)
+                b = int(12 + shade * 12)
+                a = 235 if dist < thresh * 0.82 else 175
+                grid64[y][x] = (r, g, b, a)
+    write_png(os.path.join(TEX_DIR, "blood_splatter.png"), w64, h64, grid64)
+
+    # 8. blood_footprint.png (32x32 RGBA): Bloody boot print decal
+    grid32 = [[(0, 0, 0, 0) for _ in range(32)] for _ in range(32)]
+    for y in range(32):
+        for x in range(32):
+            # Sole (top) + Heel (bottom) with tread grooves
+            in_sole = (6 <= y <= 17) and (abs(x - 15.5) <= 6.5 - abs(y - 11.5) * 0.25)
+            in_heel = (20 <= y <= 28) and (abs(x - 15.5) <= 5.2)
+            tread = (y % 3 != 0)
+            if (in_sole or in_heel) and tread:
+                n = hash2d(x, y, 950)
+                grid32[y][x] = (int(145 - n * 35), 10, 14, 210)
+    write_png(os.path.join(TEX_DIR, "blood_footprint.png"), 32, 32, grid32)
 
 
 # ============================================================================
@@ -574,6 +660,140 @@ def build_models():
     m.add_tapered_limb((0, 1.15, 0), (0, 1.24, 0), 0.38, 0.38, 0.38, 0.38, sides=8, uv_region="BR")  # Glowing blood pool inside cup
     m.save(os.path.join(MOD_DIR, "blood_chalice.obj"))
 
+    # 17. SINGLE FIRST-PERSON LEFT-HAND IRON STAKE (stake_held.obj)
+    m = ObjMeshBuilder()
+    m.add_tapered_limb((0, -0.10, 0.14), (0, 0.06, -0.52), 0.036, 0.036, 0.018, 0.018, sides=6, uv_region="BL")
+    m.add_tapered_limb((0, -0.13, 0.18), (0, -0.09, 0.13), 0.048, 0.048, 0.036, 0.036, sides=6, uv_region="TR")
+    m.add_tapered_limb((0, 0.06, -0.52), (0, 0.10, -0.74), 0.018, 0.018, 0.002, 0.002, sides=6, uv_region="BR")
+    m.save(os.path.join(MOD_DIR, "stake_held.obj"))
+
+    # 18. SINGLE HANDCANNON PISTOL FOR SEPARATE LEFT/RIGHT DUAL-WIELDING (single_pistol.obj)
+    m = ObjMeshBuilder()
+    m.add_box((0.0, 0.02, -0.26), (0.062, 0.092, 0.50), uv_region="TR")  # Heavy Hellsing slide
+    m.add_box((0.0, -0.11, -0.06), (0.052, 0.18, 0.10), uv_region="BL")  # Angled grip
+    m.add_box((0.0, 0.065, -0.32), (0.028, 0.022, 0.32), uv_region="BR")  # Glowing sight rib
+    m.save(os.path.join(MOD_DIR, "single_pistol.obj"))
+
+    # ========================================================================
+    # 3 DISTINCT SUPERNATURAL CHARACTER 3D MODELS (Risk of Rain 2 Style Preview)
+    # ========================================================================
+    # 19. VLAD TEPES — NOSFERATU VAMPIRE LORD (char_vampire_lord.obj)
+    m = ObjMeshBuilder()
+    # Aristocratic Victorian Coat Tails & Torso
+    m.add_tapered_limb((0, 0.18, 0.06), (0, 0.92, 0.0), 0.38, 0.28, 0.24, 0.18, sides=8, uv_region="TL")
+    m.add_tapered_limb((0, 0.92, 0.0), (0, 1.56, 0.0), 0.24, 0.18, 0.34, 0.22, sides=8, uv_region="TL")
+    # Sweeping High Vampiric Collar & Flowing Obsidian/Crimson Cape
+    m.add_box((0, 1.66, 0.14), (0.58, 0.34, 0.08), uv_region="TL")
+    m.add_tapered_limb((0, 1.52, 0.14), (0, 0.12, 0.36), 0.36, 0.06, 0.62, 0.08, sides=6, uv_region="BL")
+    # Pale Nosferatu Head, High Cheekbones & Glowing Ruby Eyes
+    m.add_tapered_limb((0, 1.56, 0.0), (0, 1.88, -0.02), 0.14, 0.15, 0.13, 0.14, sides=8, uv_region="TR")
+    m.add_box((-0.055, 1.74, -0.15), (0.045, 0.03, 0.03), uv_region="BR")
+    m.add_box((0.055, 1.74, -0.15), (0.045, 0.03, 0.03), uv_region="BR")
+    # Armored Pauldrons, Boots & Combat Pose Arms
+    for sx in (-1, 1):
+        m.add_tapered_limb((sx * 0.16, 0.85, 0.0), (sx * 0.18, 0.0, -0.04), 0.11, 0.11, 0.09, 0.13, sides=6, uv_region="BL")
+        m.add_box((sx * 0.38, 1.52, 0.0), (0.20, 0.16, 0.22), uv_region="TR")
+        m.add_tapered_limb((sx * 0.36, 1.46, 0.0), (sx * 0.44, 1.04, -0.26), 0.09, 0.09, 0.075, 0.075, sides=6, uv_region="TL")
+    m.save(os.path.join(MOD_DIR, "char_vampire_lord.obj"))
+
+    # 20. VARCOLAC — CARPATHIAN WEREWOLF STALKER (char_lycan_stalker.obj)
+    m = ObjMeshBuilder()
+    # Hunched Predatory Muscular Torso & Lupine Pelvis
+    m.add_tapered_limb((0, 0.78, 0.10), (0, 1.48, -0.14), 0.24, 0.20, 0.42, 0.30, sides=8, uv_region="TL")
+    # Shredded Leather Hunter Harness & Chest Cross-Straps
+    m.add_box((0, 1.18, -0.04), (0.62, 0.18, 0.44), uv_region="BL")
+    # Dorsal Razor Fur Spines along the back
+    for h_y, h_z in ((1.05, 0.18), (1.28, 0.12), (1.50, 0.04)):
+        m.add_tapered_limb((0, h_y, h_z), (0, h_y + 0.24, h_z + 0.18), 0.06, 0.08, 0.01, 0.01, sides=4, uv_region="BL")
+    # Elongated Snarling Wolf Head, Snout, Pointed Ears & Glowing Amber Eyes
+    m.add_tapered_limb((0, 1.46, -0.14), (0, 1.74, -0.24), 0.18, 0.18, 0.15, 0.16, sides=6, uv_region="TL")
+    m.add_tapered_limb((0, 1.60, -0.24), (0, 1.54, -0.54), 0.12, 0.11, 0.07, 0.07, sides=6, uv_region="TL")
+    m.add_box((0, 1.50, -0.44), (0.12, 0.04, 0.18), uv_region="TR")  # Bared fangs
+    m.add_box((-0.07, 1.66, -0.32), (0.045, 0.035, 0.03), uv_region="BR")
+    m.add_box((0.07, 1.66, -0.32), (0.045, 0.035, 0.03), uv_region="BR")
+    for sx in (-1, 1):
+        # Pointed Wolf Ears
+        m.add_tapered_limb((sx * 0.11, 1.72, -0.18), (sx * 0.18, 1.98, -0.12), 0.05, 0.05, 0.01, 0.01, sides=4, uv_region="TL")
+        # Digitigrade Hind Legs (reverse-jointed beast stance)
+        m.add_tapered_limb((sx * 0.20, 0.82, 0.10), (sx * 0.24, 0.42, 0.26), 0.13, 0.13, 0.09, 0.09, sides=6, uv_region="TL")
+        m.add_tapered_limb((sx * 0.24, 0.42, 0.26), (sx * 0.22, 0.0, -0.06), 0.08, 0.08, 0.10, 0.14, sides=6, uv_region="BL")
+        # Hulking Clawed Arms + Broken Iron Shackle Cuffs
+        m.add_tapered_limb((sx * 0.40, 1.40, -0.10), (sx * 0.52, 0.88, -0.34), 0.13, 0.13, 0.11, 0.11, sides=6, uv_region="TL")
+        m.add_box((sx * 0.52, 0.92, -0.34), (0.16, 0.10, 0.16), uv_region="TR")  # Iron cuff
+    m.save(os.path.join(MOD_DIR, "char_lycan_stalker.obj"))
+
+    # 21. MOROI — ABYSSAL PLAGUE-LICH (char_plague_lich.obj)
+    m = ObjMeshBuilder()
+    # Floating Tattered Necrotic Vestments & Exposed Bone Ribcage
+    m.add_tapered_limb((0, 0.14, 0.0), (0, 1.05, 0.0), 0.42, 0.34, 0.22, 0.18, sides=7, uv_region="TL")
+    m.add_tapered_limb((0, 1.05, 0.0), (0, 1.58, 0.0), 0.22, 0.18, 0.32, 0.22, sides=7, uv_region="TL")
+    for rib_y in (1.16, 1.28, 1.40):
+        m.add_box((0, rib_y, -0.18), (0.36, 0.045, 0.08), uv_region="TR")  # Bleached bone ribs
+    # Bleached Skull Visage + Spiked Iron Crown + Eldritch Glowing Eye Sockets
+    m.add_tapered_limb((0, 1.58, 0.0), (0, 1.88, 0.0), 0.14, 0.15, 0.13, 0.14, sides=7, uv_region="TR")
+    m.add_box((-0.055, 1.74, -0.15), (0.048, 0.04, 0.03), uv_region="BR")
+    m.add_box((0.055, 1.74, -0.15), (0.048, 0.04, 0.03), uv_region="BR")
+    for ang_i in range(5):
+        ang = (ang_i - 2) * 0.42
+        px = math.sin(ang) * 0.14
+        pz = -math.cos(ang) * 0.14
+        m.add_tapered_limb((px, 1.86, pz), (px * 1.35, 2.12, pz * 1.35), 0.028, 0.028, 0.004, 0.004, sides=4, uv_region="BL")
+    # Skeletal Arms & Orbiting Ossuary Shards
+    for sx in (-1, 1):
+        m.add_tapered_limb((sx * 0.32, 1.48, 0.0), (sx * 0.42, 1.02, -0.28), 0.08, 0.08, 0.06, 0.06, sides=5, uv_region="TR")
+        m.add_tapered_limb((sx * 0.56, 1.72, 0.12), (sx * 0.56, 1.96, 0.12), 0.06, 0.06, 0.01, 0.01, sides=4, uv_region="BR")
+    m.save(os.path.join(MOD_DIR, "char_plague_lich.obj"))
+
+    # ========================================================================
+    # MACABRE DUSK / BLOOD ENVIRONMENT PROPS
+    # ========================================================================
+    # 22. FUNCTIONAL GOTHIC BLOOD FOUNTAIN (blood_fountain.obj)
+    m = ObjMeshBuilder()
+    # Lower octagonal stone basin + blood pool surface
+    m.add_tapered_limb((0, 0.0, 0), (0, 0.65, 0), 1.65, 1.65, 1.85, 1.85, sides=8, uv_region="TL")
+    m.add_tapered_limb((0, 0.58, 0), (0, 0.68, 0), 1.62, 1.62, 1.62, 1.62, sides=8, uv_region="BR")
+    # Central fluted pedestal + Upper tier bowl + Gargoyle spout spire
+    m.add_tapered_limb((0, 0.65, 0), (0, 1.85, 0), 0.42, 0.42, 0.32, 0.32, sides=8, uv_region="TR")
+    m.add_tapered_limb((0, 1.75, 0), (0, 2.10, 0), 0.36, 0.36, 0.95, 0.95, sides=8, uv_region="TL")
+    m.add_tapered_limb((0, 2.04, 0), (0, 2.12, 0), 0.82, 0.82, 0.82, 0.82, sides=8, uv_region="BR")
+    m.add_tapered_limb((0, 2.10, 0), (0, 2.85, 0), 0.26, 0.26, 0.08, 0.08, sides=6, uv_region="TR")
+    m.save(os.path.join(MOD_DIR, "blood_fountain.obj"))
+
+    # 23. HUNG CORPSE / CHAINED CADAVER (hung_corpse.obj) — Top pivot at (0,0,0) for pendulum sway!
+    m = ObjMeshBuilder()
+    # Heavy iron ceiling chain (0.0 down to -1.35)
+    m.add_tapered_limb((0, 0.0, 0), (0, -1.35, 0), 0.04, 0.04, 0.04, 0.04, sides=5, uv_region="BL")
+    # Bound ankles, wrapped cadaver legs, ribcage & dangling head (-1.35 down to -3.10)
+    m.add_tapered_limb((0, -1.35, 0), (0, -2.10, 0), 0.09, 0.09, 0.22, 0.16, sides=6, uv_region="TL")
+    m.add_tapered_limb((0, -2.10, 0), (0, -2.75, 0), 0.22, 0.16, 0.28, 0.20, sides=6, uv_region="BR")
+    m.add_tapered_limb((0, -2.75, 0), (0, -3.08, 0), 0.13, 0.13, 0.12, 0.12, sides=6, uv_region="TR")
+    for sx in (-1, 1):
+        m.add_tapered_limb((sx * 0.24, -2.65, 0), (sx * 0.16, -3.28, 0.08), 0.065, 0.065, 0.045, 0.045, sides=5, uv_region="TL")
+    m.save(os.path.join(MOD_DIR, "hung_corpse.obj"))
+
+    # 24. IMPALED SKULL PIKE (impaled_skull_pike.obj)
+    m = ObjMeshBuilder()
+    m.add_tapered_limb((0, 0.0, 0), (0, 2.45, 0), 0.055, 0.055, 0.008, 0.008, sides=5, uv_region="BL")
+    m.add_tapered_limb((0, 1.15, 0), (0, 1.48, 0.04), 0.16, 0.18, 0.14, 0.15, sides=6, uv_region="TR")
+    m.add_tapered_limb((0, 1.78, -0.02), (0, 2.12, -0.04), 0.15, 0.17, 0.13, 0.14, sides=6, uv_region="TR")
+    m.save(os.path.join(MOD_DIR, "impaled_skull_pike.obj"))
+
+    # 25. WROUGHT IRON GRATE (wrought_iron_grate.obj)
+    m = ObjMeshBuilder()
+    m.add_box((0, 0.08, 0), (3.2, 0.12, 0.10), uv_region="BL")
+    m.add_box((0, 2.15, 0), (3.2, 0.12, 0.10), uv_region="BL")
+    for bx in (-1.4, -1.0, -0.6, -0.2, 0.2, 0.6, 1.0, 1.4):
+        m.add_tapered_limb((bx, 0.0, 0), (bx, 2.45, 0), 0.04, 0.04, 0.04, 0.04, sides=5, uv_region="TL")
+        m.add_tapered_limb((bx, 2.45, 0), (bx, 2.72, 0), 0.055, 0.055, 0.005, 0.005, sides=4, uv_region="BR")
+    m.save(os.path.join(MOD_DIR, "wrought_iron_grate.obj"))
+
+    # 26. BUTCHER MEAT CLEAVER (meat_cleaver.obj — DUSK Main Menu Table Prop)
+    m = ObjMeshBuilder()
+    m.add_box((0, 0.0, 0.22), (0.04, 0.05, 0.28), uv_region="BL")  # Wood handle
+    m.add_box((0, 0.06, -0.12), (0.018, 0.22, 0.42), uv_region="TR")  # Broad steel blade
+    m.add_box((0, -0.03, -0.12), (0.022, 0.04, 0.42), uv_region="BR")  # Bloodied cutting edge
+    m.save(os.path.join(MOD_DIR, "meat_cleaver.obj"))
+
 
 # ============================================================================
 # 3. LAYERED RETRO BOOMER-SHOOTER .WAV AUDIO GENERATOR
@@ -686,6 +906,24 @@ def build_audio():
             + 0.12 * math.sin(2 * math.pi * 110.0 * t)
             + 0.08 * math.sin(2 * math.pi * 130.81 * t)
         ) * (0.85 + 0.15 * math.sin(2 * math.pi * 0.5 * t)),
+    )
+    # 11. UI Hover Tick (DUSK metallic whisper / bone click)
+    write_wav(
+        "ui_hover.wav",
+        0.065,
+        lambda t, d: (
+            math.sin(2 * math.pi * 620.0 * t) * math.exp(-t * 48.0) * 0.35
+            + random.uniform(-1, 1) * math.exp(-t * 60.0) * 0.20
+        ),
+    )
+    # 12. UI Click Latch (Heavy crypt iron latch + low sub thud)
+    write_wav(
+        "ui_click.wav",
+        0.15,
+        lambda t, d: (
+            math.sin(2 * math.pi * (210 * math.exp(-t * 22.0) + 55.0) * t) * math.exp(-t * 18.0) * 0.65
+            + math.sin(2 * math.pi * 920.0 * t) * math.exp(-t * 35.0) * 0.25
+        ),
     )
 
 

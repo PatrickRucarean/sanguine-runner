@@ -44,11 +44,14 @@ var fov_punch: float = 0.0
 var trauma: float = 0.0
 var bob_time: float = 0.0
 
-# First-Person 3D Body Rig (Vampiric Cuffed Hands + Slide/Kick Boots + Weapon Viewmodel)
-var viewmodel_pivot: Node3D = null
-var weapon_mesh_inst: MeshInstance3D = null
+# First-Person Separate Dual-Wield Arms Rig + Slide/Kick Boots
+var left_arm_pivot: Node3D = null
+var right_arm_pivot: Node3D = null
 var left_hand_inst: MeshInstance3D = null
 var right_hand_inst: MeshInstance3D = null
+var left_weapon_inst: MeshInstance3D = null
+var right_weapon_inst: MeshInstance3D = null
+
 var boots_pivot: Node3D = null
 var left_boot_inst: MeshInstance3D = null
 var right_boot_inst: MeshInstance3D = null
@@ -59,9 +62,20 @@ var slash_ribbon_timer: float = 0.0
 var swing_anim_timer: float = 0.0
 var swing_dir_sign: float = 1.0
 
+# Separate Dual-Wield Animation Timers (Left Hand Stake / Pistol vs Right Hand Hammer / Pistol)
+var left_throw_timer: float = 0.0
+var left_throw_duration: float = 0.26
+var right_slam_timer: float = 0.0
+var dual_pistol_alt_side: bool = false
+
 # Occult War-Hammer Overhead Wind-Up State
 var hammer_windup_timer: float = 0.0
 var hammer_smash_pending: bool = false
+
+# Bloody Boots Footprint Trail State
+var bloody_boots_timer: float = 0.0
+var footprint_step_timer: float = 0.0
+var footprint_left_side: bool = false
 
 var equipped_weapon_id: String = "alucard_sword"
 var weapon_cfg: Dictionary = {}
@@ -86,6 +100,10 @@ var game_main: Node = null
 
 
 func _ready() -> void:
+	# Layer 4 = Player, Mask 1 (Environment) | 2 (Enemies)
+	collision_layer = 4
+	collision_mask = 1 | 2
+
 	col_shape = CollisionShape3D.new()
 	capsule = CapsuleShape3D.new()
 	capsule.radius = 0.42
@@ -104,14 +122,7 @@ func _ready() -> void:
 	camera.far = 160.0
 	camera_holder.add_child(camera)
 
-	# 1. First-Person Viewmodel & Vampiric Cuffed Hands Rig
-	viewmodel_pivot = Node3D.new()
-	viewmodel_pivot.position = Vector3(0.26, -0.26, -0.42)
-	camera.add_child(viewmodel_pivot)
-
-	weapon_mesh_inst = MeshInstance3D.new()
-	viewmodel_pivot.add_child(weapon_mesh_inst)
-
+	# 1. Separate Left & Right Arm Viewmodel Pivots (True Dual-Wield Architecture!)
 	var cuff_mat: StandardMaterial3D = RetroAssetLoader.make_retro_material(
 		"res://assets/textures/inquisitor_tex.png",
 		Vector3.ONE,
@@ -121,18 +132,32 @@ func _ready() -> void:
 	)
 	var hand_mesh: ArrayMesh = RetroAssetLoader.load_obj_mesh("res://assets/models/vampiric_hand.obj", cuff_mat)
 
-	right_hand_inst = MeshInstance3D.new()
-	right_hand_inst.mesh = hand_mesh
-	right_hand_inst.material_override = cuff_mat
-	right_hand_inst.position = Vector3(0.02, -0.14, 0.08)
-	viewmodel_pivot.add_child(right_hand_inst)
+	left_arm_pivot = Node3D.new()
+	left_arm_pivot.position = Vector3(-0.28, -0.25, -0.44)
+	camera.add_child(left_arm_pivot)
 
 	left_hand_inst = MeshInstance3D.new()
 	left_hand_inst.mesh = hand_mesh
 	left_hand_inst.material_override = cuff_mat
-	left_hand_inst.position = Vector3(-0.34, -0.12, -0.05)
+	left_hand_inst.position = Vector3(0.0, -0.10, 0.08)
 	left_hand_inst.scale = Vector3(-1.0, 1.0, 1.0)
-	viewmodel_pivot.add_child(left_hand_inst)
+	left_arm_pivot.add_child(left_hand_inst)
+
+	left_weapon_inst = MeshInstance3D.new()
+	left_arm_pivot.add_child(left_weapon_inst)
+
+	right_arm_pivot = Node3D.new()
+	right_arm_pivot.position = Vector3(0.28, -0.25, -0.42)
+	camera.add_child(right_arm_pivot)
+
+	right_hand_inst = MeshInstance3D.new()
+	right_hand_inst.mesh = hand_mesh
+	right_hand_inst.material_override = cuff_mat
+	right_hand_inst.position = Vector3(0.0, -0.10, 0.08)
+	right_arm_pivot.add_child(right_hand_inst)
+
+	right_weapon_inst = MeshInstance3D.new()
+	right_arm_pivot.add_child(right_weapon_inst)
 
 	# 2. First-Person 3D Vampiric Boots Rig (visible during Slides & Blood-Kicks!)
 	boots_pivot = Node3D.new()
@@ -198,30 +223,46 @@ func equip_single_weapon(wep_id: String) -> void:
 		Color(0.9, 0.08, 0.14),
 		0.28
 	)
-	weapon_mesh_inst.mesh = RetroAssetLoader.load_obj_mesh(String(weapon_cfg["obj_path"]), wep_mat)
-	weapon_mesh_inst.material_override = wep_mat
 	sfx_player.stream = RetroAssetLoader.load_wav(String(weapon_cfg["sfx_path"]))
 
-	# Position 3D Vampiric Hands to match weapon grip
-	if wep_id in ["jackal_and_casull", "stake_and_hammer"]:
-		left_hand_inst.position = Vector3(-0.24, -0.14, -0.08)
-		right_hand_inst.position = Vector3(0.18, -0.14, -0.06)
-	elif wep_id == "occult_scythe":
-		left_hand_inst.position = Vector3(-0.02, 0.06, -0.35)
-		right_hand_inst.position = Vector3(0.05, -0.20, 0.10)
+	# Separate Hands Architecture:
+	# - stake_and_hammer: Left Hand holds Iron Stake (stake_held.obj), Right Hand holds Occult War-Hammer (war_hammer.obj)
+	# - jackal_and_casull: Left Hand holds Jackal Pistol, Right Hand holds Casull Pistol (single_pistol.obj)
+	# - Single/Two-Handed weapons: Right Hand holds main weapon, Left Hand supports foregrip
+	if wep_id == "stake_and_hammer":
+		left_weapon_inst.mesh = RetroAssetLoader.load_obj_mesh("res://assets/models/stake_held.obj", wep_mat)
+		left_weapon_inst.material_override = wep_mat
+		left_weapon_inst.visible = true
+		right_weapon_inst.mesh = RetroAssetLoader.load_obj_mesh("res://assets/models/war_hammer.obj", wep_mat)
+		right_weapon_inst.material_override = wep_mat
+		right_weapon_inst.visible = true
+	elif wep_id == "jackal_and_casull":
+		var pistol_mesh: ArrayMesh = RetroAssetLoader.load_obj_mesh("res://assets/models/single_pistol.obj", wep_mat)
+		left_weapon_inst.mesh = pistol_mesh
+		left_weapon_inst.material_override = wep_mat
+		left_weapon_inst.visible = true
+		right_weapon_inst.mesh = pistol_mesh
+		right_weapon_inst.material_override = wep_mat
+		right_weapon_inst.visible = true
 	else:
-		left_hand_inst.position = Vector3(-0.22, -0.18, -0.12)
-		right_hand_inst.position = Vector3(0.0, -0.14, 0.08)
+		left_weapon_inst.visible = false
+		right_weapon_inst.mesh = RetroAssetLoader.load_obj_mesh(String(weapon_cfg["obj_path"]), wep_mat)
+		right_weapon_inst.material_override = wep_mat
+		right_weapon_inst.visible = true
 
 	max_ammo = 16 if wep_id == "jackal_and_casull" else (8 if wep_id == "trench_shotgun" else 0)
 	ammo = max_ammo
 	is_reloading = false
 	hammer_smash_pending = false
+	left_throw_timer = 0.0
+	right_slam_timer = 0.0
 
 
 func handle_mouse_motion(rel: Vector2) -> void:
-	yaw -= rel.x * mouse_sensitivity
-	pitch = clampf(pitch - rel.y * mouse_sensitivity, deg_to_rad(-86.0), deg_to_rad(86.0))
+	var sens: float = DataCatalog.mouse_sens
+	var y_sign: float = -1.0 if DataCatalog.invert_y else 1.0
+	yaw -= rel.x * sens
+	pitch = clampf(pitch - rel.y * sens * y_sign, deg_to_rad(-86.0), deg_to_rad(86.0))
 	rotation.y = yaw
 
 
@@ -255,6 +296,19 @@ func physics_tick(dt: float) -> void:
 		speed_buff_timer -= dt
 	if boot_kick_timer > 0.0:
 		boot_kick_timer -= dt
+	if left_throw_timer > 0.0:
+		left_throw_timer = maxf(0.0, left_throw_timer - dt)
+	if right_slam_timer > 0.0:
+		right_slam_timer = maxf(0.0, right_slam_timer - dt)
+	if bloody_boots_timer > 0.0:
+		bloody_boots_timer = maxf(0.0, bloody_boots_timer - dt)
+		if is_on_floor() and get_horizontal_speed() > 2.2:
+			footprint_step_timer -= dt
+			if footprint_step_timer <= 0.0:
+				footprint_step_timer = 0.24
+				footprint_left_side = not footprint_left_side
+				game_main.spawn_bloody_footprint(global_position, yaw, footprint_left_side)
+
 	blood_gauge = minf(max_blood_gauge, blood_gauge + 4.2 * dt)
 
 	# Process Occult War-Hammer Wind-Up -> Heavy Smash Detonation!
@@ -520,27 +574,31 @@ func trigger_quick_melee() -> void:
 func _execute_primary_attack() -> void:
 	var rate_mult := 1.0 + maxf(-0.5, float(game_main.player_stats.get("fire_rate_pct", 0.0)))
 	fire_cooldown = float(weapon_cfg["fire_interval"]) / rate_mult
-	swing_anim_timer = minf(0.28, fire_cooldown * 0.85)
 	swing_dir_sign = -swing_dir_sign
 	_play_weapon_sfx(randf_range(0.95, 1.05))
 
 	var cat := String(weapon_cfg["category"])
 	if cat == "HYBRID_EXPUNGE":
-		# STAKE & HAMMER LMB: Throw Fast Iron Vampire Stake (Impales & Slows target!)
+		# LEFT HAND ONLY: Thrust/Throw Iron Stake forward + pull new stake from belt bandolier!
+		left_throw_duration = minf(0.28, maxf(0.16, fire_cooldown * 0.92))
+		left_throw_timer = left_throw_duration
 		fov_punch = minf(9.0, fov_punch + 2.5)
 		recoil_pitch_kick = minf(0.14, recoil_pitch_kick + 0.032)
 		swing_tilt_deg = -2.2
 		trauma = minf(1.0, trauma + 0.16)
 		var cam_org: Vector3 = camera.global_position
 		var cam_fwd: Vector3 = -camera.global_transform.basis.z
+		var cam_left: Vector3 = -camera.global_transform.basis.x
 		var stake_count := 1 + int(game_main.player_stats.get("stake_bonus_count", 0.0))
 		for s_i in range(stake_count):
 			var dir := cam_fwd
 			if stake_count > 1:
 				var spread_rad := deg_to_rad((float(s_i) - 0.5) * 3.5)
 				dir = dir.rotated(Vector3.UP, spread_rad)
-			game_main.spawn_player_stake_projectile(cam_org + Vector3(0, -0.08, 0) + dir * 0.45, dir * 46.0)
+			# Spawn from the Left Hand position!
+			game_main.spawn_player_stake_projectile(cam_org + cam_left * 0.24 + Vector3(0, -0.10, 0) + dir * 0.45, dir * 46.0)
 	elif cat == "MELEE":
+		swing_anim_timer = minf(0.28, fire_cooldown * 0.85)
 		slash_ribbon_timer = 0.11
 		slash_ribbon_inst.visible = true
 		slash_ribbon_inst.rotation.z = deg_to_rad(18.0 * swing_dir_sign)
@@ -556,6 +614,8 @@ func _execute_primary_attack() -> void:
 			trigger_reload_or_flourish()
 			return
 		ammo -= 1
+		swing_anim_timer = minf(0.24, fire_cooldown * 0.85)
+		dual_pistol_alt_side = not dual_pistol_alt_side
 		var is_shotgun := (equipped_weapon_id == "trench_shotgun")
 		fov_punch = minf(10.0, fov_punch + (6.8 if is_shotgun else 2.8))
 		recoil_pitch_kick = minf(0.22, recoil_pitch_kick + (0.095 if is_shotgun else 0.035))
@@ -568,9 +628,9 @@ func _execute_primary_attack() -> void:
 func _execute_secondary_attack() -> void:
 	var cat := String(weapon_cfg["category"])
 	if cat == "HYBRID_EXPUNGE":
-		# STAKE & HAMMER RMB: Occult War-Hammer Heavy Overhead Wind-up -> Expunge Detonation!
+		# RIGHT HAND ONLY: Occult War-Hammer Heavy Overhead Wind-up -> Expunge Detonation!
 		alt_cooldown = 0.72
-		hammer_windup_timer = 0.13
+		hammer_windup_timer = 0.14
 		hammer_smash_pending = true
 		recoil_pitch_kick = -0.06 # Camera lifts slightly during overhead wind-up
 		return
@@ -601,14 +661,14 @@ func _execute_secondary_attack() -> void:
 
 
 func _complete_war_hammer_expunge_smash() -> void:
-	swing_anim_timer = 0.34
+	right_slam_timer = 0.34
 	slash_ribbon_timer = 0.16
 	slash_ribbon_inst.visible = true
 	slash_ribbon_inst.rotation.z = deg_to_rad(78.0) # Overhead vertical smash arc
 	fov_punch = minf(11.0, fov_punch + 8.0)
-	recoil_pitch_kick = 0.14 # Violent camera kick on hammer smash!
-	swing_tilt_deg = -4.8
-	trauma = minf(1.0, trauma + 0.68)
+	recoil_pitch_kick = 0.15 # Violent camera kick on hammer smash!
+	swing_tilt_deg = -5.2
+	trauma = minf(1.0, trauma + 0.72)
 	if hammer_sfx_player != null and hammer_sfx_player.stream != null:
 		hammer_sfx_player.pitch_scale = randf_range(0.94, 1.04)
 		hammer_sfx_player.play()
@@ -667,28 +727,91 @@ func _update_camera_and_viewmodel(dt: float, _wish_dir: Vector3) -> void:
 
 	if is_on_floor() and h_spd > 1.5 and move_state == MoveState.RUN:
 		bob_time += dt * minf(15.0, h_spd * 1.05)
-	var bob_x := sin(bob_time) * 0.018
-	var bob_y := absf(cos(bob_time)) * -0.016
+	var bob_x := sin(bob_time) * 0.016
+	var bob_y := absf(cos(bob_time)) * -0.015
 
 	if slash_ribbon_timer > 0.0:
 		slash_ribbon_timer -= dt
 		if slash_ribbon_timer <= 0.0:
 			slash_ribbon_inst.visible = false
 
-	if hammer_smash_pending:
-		# Overhead War-Hammer Wind-up pose
-		viewmodel_pivot.position = viewmodel_pivot.position.lerp(Vector3(0.18, 0.08, -0.32), minf(1.0, dt * 22.0))
-		viewmodel_pivot.rotation_degrees = viewmodel_pivot.rotation_degrees.lerp(Vector3(42.0, -12.0, 15.0), minf(1.0, dt * 22.0))
-	elif swing_anim_timer > 0.0:
-		swing_anim_timer = maxf(0.0, swing_anim_timer - dt)
-		var t_norm := swing_anim_timer / 0.26
-		var cat := String(weapon_cfg.get("category", "MELEE"))
-		if cat in ["MELEE", "HYBRID_EXPUNGE"]:
-			viewmodel_pivot.position = Vector3(0.24 - 0.28 * sin(t_norm * PI) * swing_dir_sign, -0.24, -0.48 - 0.16 * sin(t_norm * PI))
-			viewmodel_pivot.rotation_degrees = Vector3(-42.0 * sin(t_norm * PI), 40.0 * sin(t_norm * PI) * swing_dir_sign, -26.0 * swing_dir_sign)
+	# =========================================================================
+	# SEPARATE DUAL-WIELD HANDS ANIMATION (Stake & Hammer / Dual Jackals / Melee)
+	# =========================================================================
+	if equipped_weapon_id == "stake_and_hammer":
+		# 1. LEFT HAND (Iron Stake Aiming, Forward Throw & Belt Bandolier Reload):
+		if left_throw_timer > 0.0:
+			var prog: float = 1.0 - (left_throw_timer / maxf(0.01, left_throw_duration))
+			if prog < 0.36:
+				# Phase 1: Quick forward thrust & release
+				var p1: float = prog / 0.36
+				left_weapon_inst.visible = true
+				left_arm_pivot.position = Vector3(-0.24 + 0.08 * p1, -0.20 + 0.05 * p1, -0.44 - 0.32 * p1)
+				left_arm_pivot.rotation_degrees = Vector3(-28.0 * p1, -12.0 * p1, 0.0)
+			elif prog < 0.68:
+				# Phase 2: Stake is in flight; left hand dips down to waist belt bandolier
+				var p2: float = (prog - 0.36) / 0.32
+				left_weapon_inst.visible = (p2 > 0.55)
+				left_arm_pivot.position = Vector3(-0.28, -0.22 - 0.28 * sin(p2 * PI), -0.36)
+				left_arm_pivot.rotation_degrees = Vector3(38.0 * sin(p2 * PI), 15.0, -18.0)
+			else:
+				# Phase 3: Bring new iron stake from bandolier up into aiming grip
+				var p3: float = (prog - 0.68) / 0.32
+				left_weapon_inst.visible = true
+				left_arm_pivot.position = Vector3(-0.28, lerpf(-0.42, -0.24, p3), lerpf(-0.34, -0.44, p3))
+				left_arm_pivot.rotation_degrees = Vector3(lerpf(25.0, 4.0, p3), 0.0, 0.0)
 		else:
-			viewmodel_pivot.position = Vector3(0.26 + bob_x, -0.24 + bob_y + 0.05 * t_norm, -0.35 + 0.11 * t_norm)
-			viewmodel_pivot.rotation_degrees = Vector3(18.0 * t_norm, 0.0, 0.0)
+			left_weapon_inst.visible = true
+			left_arm_pivot.position = left_arm_pivot.position.lerp(Vector3(-0.28 - bob_x, -0.24 + bob_y, -0.44), minf(1.0, dt * 15.0))
+			left_arm_pivot.rotation_degrees = left_arm_pivot.rotation_degrees.lerp(Vector3(4.0, -6.0, 4.0), minf(1.0, dt * 15.0))
+
+		# 2. RIGHT HAND (Occult War-Hammer Ready Grip, Overhead Wind-up & Violent Slam):
+		if hammer_smash_pending:
+			# Deliberate heavy overhead wind-up!
+			right_arm_pivot.position = right_arm_pivot.position.lerp(Vector3(0.24, 0.16, -0.26), minf(1.0, dt * 24.0))
+			right_arm_pivot.rotation_degrees = right_arm_pivot.rotation_degrees.lerp(Vector3(56.0, -14.0, 18.0), minf(1.0, dt * 24.0))
+		elif right_slam_timer > 0.0:
+			var s_norm: float = right_slam_timer / 0.34
+			var slam_arc: float = sin((1.0 - s_norm) * PI)
+			right_arm_pivot.position = Vector3(0.22 - 0.10 * slam_arc, -0.24 - 0.22 * slam_arc, -0.44 - 0.24 * slam_arc)
+			right_arm_pivot.rotation_degrees = Vector3(-68.0 * slam_arc, 16.0 * slam_arc, -18.0 * slam_arc)
+		else:
+			right_arm_pivot.position = right_arm_pivot.position.lerp(Vector3(0.28 + bob_x, -0.22 + bob_y, -0.40), minf(1.0, dt * 14.0))
+			right_arm_pivot.rotation_degrees = right_arm_pivot.rotation_degrees.lerp(Vector3(12.0, 6.0, -6.0), minf(1.0, dt * 14.0))
+
+	elif equipped_weapon_id == "jackal_and_casull":
+		# Alternating Left/Right Dual-Wield 13mm Handcannon Recoil!
+		var kick_t: float = (swing_anim_timer / 0.24) if swing_anim_timer > 0.0 else 0.0
+		if swing_anim_timer > 0.0:
+			swing_anim_timer = maxf(0.0, swing_anim_timer - dt)
+		var l_kick: float = kick_t if dual_pistol_alt_side else 0.0
+		var r_kick: float = kick_t if not dual_pistol_alt_side else 0.0
+
+		left_arm_pivot.position = Vector3(-0.26 - bob_x, -0.24 + bob_y + 0.05 * l_kick, -0.42 + 0.12 * l_kick)
+		left_arm_pivot.rotation_degrees = Vector3(24.0 * l_kick, 0.0, 0.0)
+
+		right_arm_pivot.position = Vector3(0.26 + bob_x, -0.24 + bob_y + 0.05 * r_kick, -0.42 + 0.12 * r_kick)
+		right_arm_pivot.rotation_degrees = Vector3(24.0 * r_kick, 0.0, 0.0)
+
 	else:
-		viewmodel_pivot.position = viewmodel_pivot.position.lerp(Vector3(0.26 + bob_x, -0.26 + bob_y, -0.42), minf(1.0, dt * 14.0))
-		viewmodel_pivot.rotation_degrees = viewmodel_pivot.rotation_degrees.lerp(Vector3.ZERO, minf(1.0, dt * 14.0))
+		# Melee (Sword / Scythe) or Trench Coach-Gun
+		if swing_anim_timer > 0.0:
+			swing_anim_timer = maxf(0.0, swing_anim_timer - dt)
+			var t_norm: float = swing_anim_timer / 0.26
+			var cat: String = String(weapon_cfg.get("category", "MELEE"))
+			if cat == "MELEE":
+				var sw: float = sin(t_norm * PI)
+				right_arm_pivot.position = Vector3(0.24 - 0.30 * sw * swing_dir_sign, -0.24, -0.48 - 0.16 * sw)
+				right_arm_pivot.rotation_degrees = Vector3(-42.0 * sw, 42.0 * sw * swing_dir_sign, -28.0 * swing_dir_sign)
+				left_arm_pivot.position = Vector3(-0.18 - 0.18 * sw * swing_dir_sign, -0.28, -0.42 - 0.10 * sw)
+				left_arm_pivot.rotation_degrees = Vector3(-20.0 * sw, 20.0 * sw * swing_dir_sign, 0.0)
+			else:
+				right_arm_pivot.position = Vector3(0.24 + bob_x, -0.24 + bob_y + 0.06 * t_norm, -0.34 + 0.13 * t_norm)
+				right_arm_pivot.rotation_degrees = Vector3(22.0 * t_norm, 0.0, 0.0)
+				left_arm_pivot.position = Vector3(-0.12 + bob_x, -0.26 + bob_y + 0.05 * t_norm, -0.52 + 0.12 * t_norm)
+				left_arm_pivot.rotation_degrees = Vector3(18.0 * t_norm, 22.0, 0.0)
+		else:
+			right_arm_pivot.position = right_arm_pivot.position.lerp(Vector3(0.26 + bob_x, -0.26 + bob_y, -0.42), minf(1.0, dt * 14.0))
+			right_arm_pivot.rotation_degrees = right_arm_pivot.rotation_degrees.lerp(Vector3.ZERO, minf(1.0, dt * 14.0))
+			left_arm_pivot.position = left_arm_pivot.position.lerp(Vector3(-0.16 - bob_x, -0.28 + bob_y, -0.48), minf(1.0, dt * 14.0))
+			left_arm_pivot.rotation_degrees = left_arm_pivot.rotation_degrees.lerp(Vector3(0.0, 18.0, 0.0), minf(1.0, dt * 14.0))

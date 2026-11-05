@@ -1,4 +1,4 @@
-extends Node3D
+extends CharacterBody3D
 
 const RetroAssetLoader = preload("res://scripts/RetroAssetLoader.gd")
 const DataCatalog = preload("res://scripts/DataCatalog.gd")
@@ -33,17 +33,33 @@ var impaled_stakes: int = 0
 var stake_mesh_nodes: Array[MeshInstance3D] = []
 var stake_badge_lbl: Label3D = null
 
-var velocity: Vector3 = Vector3.ZERO
 var boid_push: Vector3 = Vector3.ZERO
 var attack_cooldown: float = 1.2
 var leap_cooldown: float = 2.0
 var anim_phase: float = 0.0
 var hit_flash_timer: float = 0.0
 
+var col_shape: CollisionShape3D = null
 var mesh_inst: MeshInstance3D = null
 var base_material: StandardMaterial3D = null
 var flash_material: StandardMaterial3D = null
 var stagger_material: StandardMaterial3D = null
+
+
+func _ready() -> void:
+	# Layer 2 = Monsters; Collides with Layer 1 (Environment), Layer 2 (Other Monsters), Layer 4 (Player)
+	collision_layer = 2
+	collision_mask = 1 | 2 | 4
+	floor_max_angle = deg_to_rad(52.0)
+	floor_snap_length = 0.35
+
+	col_shape = CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.radius = 0.44
+	cap.height = 1.75
+	col_shape.shape = cap
+	col_shape.position = Vector3(0.0, 0.88, 0.0)
+	add_child(col_shape)
 
 
 func setup_from_catalog(arch_id: String, pacing: Dictionary, elite_roll: bool) -> void:
@@ -202,13 +218,18 @@ func tick_ai(dt: float, player_pos: Vector3, game_main: Node) -> void:
 
 	if is_bowling:
 		bowling_timer -= dt
-		position += velocity * dt
-		velocity = velocity.move_toward(Vector3.ZERO, 22.0 * dt)
-		rotation.x += dt * 12.0
+		if not is_on_floor():
+			velocity.y -= 28.0 * dt
+		move_and_slide()
+		velocity.x = move_toward(velocity.x, 0.0, 22.0 * dt)
+		velocity.z = move_toward(velocity.z, 0.0, 22.0 * dt)
+		if mesh_inst != null:
+			mesh_inst.rotation.x += dt * 12.0
 		game_main.check_bowling_impact(self)
-		if bowling_timer <= 0.0 or velocity.length() < 2.0:
+		if bowling_timer <= 0.0 or Vector2(velocity.x, velocity.z).length() < 2.0:
 			is_bowling = false
-			rotation.x = 0.0
+			if mesh_inst != null:
+				mesh_inst.rotation.x = 0.0
 		_clamp_to_catacomb_bounds()
 		return
 
@@ -222,17 +243,23 @@ func tick_ai(dt: float, player_pos: Vector3, game_main: Node) -> void:
 		rotation.y = lerp_angle(rotation.y, target_yaw, minf(1.0, dt * 10.0))
 
 	if is_staggered:
-		velocity = velocity.move_toward(Vector3.ZERO, 18.0 * dt)
-		position += velocity * dt
+		velocity.x = move_toward(velocity.x, 0.0, 18.0 * dt)
+		velocity.z = move_toward(velocity.z, 0.0, 18.0 * dt)
+		if not is_on_floor():
+			velocity.y -= 28.0 * dt
+		move_and_slide()
 		_clamp_to_catacomb_bounds()
 		return
 
 	attack_cooldown -= dt
 	leap_cooldown -= dt
 
+	# Strong Soft Crowd Separation (Boid Repulsion) so swarms never overlap or phase inside each other!
+	var sep_vec := Vector3(boid_push.x, 0.0, boid_push.z)
+
 	match role:
 		"FODDER", "BRUISER":
-			var wish_vel := (dir + boid_push * 0.65).normalized() * eff_spd
+			var wish_vel := (dir + sep_vec * 1.15).normalized() * eff_spd
 			velocity.x = move_toward(velocity.x, wish_vel.x, 18.0 * dt)
 			velocity.z = move_toward(velocity.z, wish_vel.z, 18.0 * dt)
 			if mesh_inst != null:
@@ -250,7 +277,7 @@ func tick_ai(dt: float, player_pos: Vector3, game_main: Node) -> void:
 				elif dist < preferred_dist * 1.15:
 					move_factor = 0.15
 			var strafe := Vector3(-dir.z, 0.0, dir.x) * sin(anim_phase * 0.4) * 0.55
-			var wish_vel := (dir * move_factor + strafe + boid_push * 0.5).normalized() * eff_spd
+			var wish_vel := (dir * move_factor + strafe + sep_vec * 0.95).normalized() * eff_spd
 			velocity.x = move_toward(velocity.x, wish_vel.x, 14.0 * dt)
 			velocity.z = move_toward(velocity.z, wish_vel.z, 14.0 * dt)
 			if mesh_inst != null:
@@ -273,12 +300,12 @@ func tick_ai(dt: float, player_pos: Vector3, game_main: Node) -> void:
 				game_main.damage_player(contact_damage, position)
 
 		"STALKER":
-			var wish_vel := (dir + boid_push * 0.45).normalized() * eff_spd
+			var wish_vel := (dir + sep_vec * 0.85).normalized() * eff_spd
 			velocity.x = move_toward(velocity.x, wish_vel.x, 26.0 * dt)
 			velocity.z = move_toward(velocity.z, wish_vel.z, 26.0 * dt)
 
 			var near_wall := (absf(absf(position.x) - 14.0) < 2.8 or absf(position.x) > 35.0 or absf(position.z) > 35.0)
-			if leap_cooldown <= 0.0 and (near_wall or (dist > 5.0 and dist < 13.5)) and position.y <= 0.5:
+			if leap_cooldown <= 0.0 and (near_wall or (dist > 5.0 and dist < 13.5)) and is_on_floor():
 				leap_cooldown = 2.8
 				velocity = dir * (eff_spd * 1.55) + Vector3(0.0, 9.2, 0.0)
 
@@ -290,15 +317,13 @@ func tick_ai(dt: float, player_pos: Vector3, game_main: Node) -> void:
 				attack_cooldown = 0.85
 				game_main.damage_player(contact_damage, position)
 
-	# 3-Tier Crypt Floor Height Adaptation (Sacrificial Pit at y = -2.2m vs Main Nave at y = 0.0m)
-	var floor_y := -2.2 if (absf(position.x) < 9.5 and absf(position.z) < 9.5) else 0.0
-	if position.y > floor_y or velocity.y > 0.0:
-		velocity.y -= 24.0 * dt
-	position += velocity * dt
-	if position.y < floor_y:
-		position.y = lerpf(position.y, floor_y, minf(1.0, dt * 14.0))
-		velocity.y = 0.0
+	# Real 3D Capsule Physics + Gravity across ramps, stairs, balconies & sacrificial pit!
+	if not is_on_floor():
+		velocity.y -= 28.0 * dt
+	elif velocity.y < 0.0:
+		velocity.y = -0.5
 
+	move_and_slide()
 	_clamp_to_catacomb_bounds()
 
 

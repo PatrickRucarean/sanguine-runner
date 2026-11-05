@@ -12,7 +12,7 @@ config_version=5
 
 config/name="SANGUINE_RUNNER — Retro Gothic Boomer-Shooter"
 config/description="1st-Person Movement Roguelike Arena Shooter in DUSK/Quake/Blood Retro Style"
-run/main_scene="res://scenes/MainCatacomb.tscn"
+run/main_scene="res://scenes/menus/MainMenu.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 boot_splash/bg_color=Color(0.04, 0.03, 0.05, 1)
 

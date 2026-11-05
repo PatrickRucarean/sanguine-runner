@@ -175,14 +175,25 @@ static func make_silhouette_icon(icon_id: String, fg_col: Color) -> Texture2D:
 			var dy := float(y - 24)
 			var draw := false
 			match icon_id:
-				"tepes_aristocrat": # Alucard Wide-Brim Hat & Pentagram Eye
-					draw = (absf(dy + 6.0) < 3.0 and absf(dx) < 16.0) or (absf(dx) < 8.0 and dy > -14.0 and dy < 12.0)
-				"nosferatu_leech": # Fanged Skull & Blood Chalice Drop
-					draw = (dx * dx + (dy + 3.0) * (dy + 3.0) < 95.0) or (absf(dx) in [3.0, 4.0] and dy > 4.0 and dy < 14.0)
-				"nightrunner_wraith": # Bat Wings Silhouette
-					draw = (absf(dy) < 12.0 - absf(dx) * 0.45 and absf(dx) < 16.0)
-				"cathedral_juggernaut": # Great Helm Cross Visor
-					draw = (absf(dx) < 11.0 and absf(dy) < 14.0) and not (absf(dx) < 2.0 or absf(dy + 2.0) < 2.0)
+				"vlad_vampire", "tepes_aristocrat", "nosferatu_leech": # Nosferatu High Collar, Fangs & Glowing Eyes
+					var collar := (dy > -8.0 and dy < 16.0 and absf(dx) > 7.0 and absf(dx) < 16.0 - (dy + 8.0) * 0.25)
+					var head := (dx * dx + (dy + 4.0) * (dy + 4.0) < 52.0)
+					var fangs := (absf(dx) in [2.0, 3.0] and dy > 3.0 and dy < 11.0)
+					draw = collar or head or fangs
+				"fenrir_lycan", "nightrunner_wraith": # Carpathian Werewolf Ears, Snout & Claws
+					var ears := (dy < -5.0 and dy > -17.0 and absf(absf(dx) - 8.0) < (17.0 + dy) * 0.42)
+					var snout := (absf(dx) < 11.0 - maxf(0.0, dy) * 0.45 and dy >= -8.0 and dy < 13.0)
+					var slashes := (absf(dx + dy - 10.0) < 1.8 and dx > 2.0 and dy > 2.0)
+					draw = ears or snout or slashes
+				"malakor_lich", "cathedral_juggernaut": # Spiked Lich Crown & Hollow Skull Visage
+					var crown := (dy <= -7.0 and dy > -17.0 and (int(absf(dx)) % 4 <= 1) and absf(dx) < 13.0)
+					var skull := (absf(dx) < 10.0 and dy > -8.0 and dy < 8.0) and not (absf(dx) in [3.0, 4.0, 5.0] and dy > -5.0 and dy < 0.0)
+					var jaw := (absf(dx) < 6.0 and dy >= 8.0 and dy < 15.0 and int(dx) % 2 == 0)
+					draw = crown or skull or jaw
+				"locked_slot": # Chained Padlock / Sealed Crypt Slot (RoR2 style)
+					var shackle := (dy < -1.0 and dy > -13.0 and absf(sqrt(dx * dx + (dy + 2.0) * (dy + 2.0)) - 7.0) < 2.2)
+					var body := (absf(dx) < 10.0 and dy >= -2.0 and dy < 14.0) and not (absf(dx) < 2.2 and dy > 2.0 and dy < 9.0)
+					draw = shackle or body
 				"alucard_sword": # Diagonal Broadsword & Swept Crossguard
 					draw = (absf(dx + dy) < 2.4 and absf(dx - dy) < 22.0) or (absf(dx - dy + 8.0) < 2.2 and absf(dx + dy) < 9.0)
 				"occult_scythe": # Sweeping Crescent Reaper Blade

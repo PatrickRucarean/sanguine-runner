@@ -8,9 +8,9 @@ const EnemyActorScript = preload("res://scripts/EnemyActor.gd")
 
 enum GamePhase { LOADOUT_SELECT, ACTIVE_WAVE, BLOOD_ALTAR, GAME_OVER }
 
-var phase: GamePhase = GamePhase.LOADOUT_SELECT
+var phase: GamePhase = GamePhase.ACTIVE_WAVE
 var is_paused: bool = false
-var selected_char_id: String = "tepes_aristocrat"
+var selected_char_id: String = "vlad_vampire"
 var selected_weapon_id: String = "stake_and_hammer"
 var selected_danger_tier: int = 0
 
@@ -63,6 +63,14 @@ var gib_pool: Array[Dictionary] = []
 
 const MAX_DMG_LABELS: int = 32
 var dmg_label_pool: Array[Dictionary] = []
+
+const MAX_BLOOD_DECALS: int = 90
+var blood_decal_pool: Array[MeshInstance3D] = []
+var blood_decal_cursor: int = 0
+
+const MAX_FOOTPRINTS: int = 48
+var footprint_pool: Array[Dictionary] = []
+var footprint_cursor: int = 0
 
 var familiar_nodes: Array[MeshInstance3D] = []
 var familiar_time: float = 0.0
@@ -140,8 +148,15 @@ func _ready() -> void:
 
 	_init_object_pools()
 	_build_ui()
-	_reset_player_stats()
-	_show_loadout_screen()
+
+	# Read selected loadout & audio settings from persistent DataCatalog state
+	selected_char_id = DataCatalog.selected_char_id if DataCatalog.CHARACTERS.has(DataCatalog.selected_char_id) else "vlad_vampire"
+	selected_weapon_id = DataCatalog.selected_weapon_id if DataCatalog.WEAPONS.has(DataCatalog.selected_weapon_id) else "stake_and_hammer"
+	selected_danger_tier = clampi(DataCatalog.selected_danger_tier, 0, 5)
+	AudioServer.set_bus_volume_db(0, DataCatalog.master_vol_db)
+	music_player.volume_db = DataCatalog.music_vol_db
+
+	start_new_run()
 
 
 func _init_object_pools() -> void:
@@ -248,30 +263,68 @@ func _init_object_pools() -> void:
 			"mesh": mi
 		})
 
+	# 5. Persistent Wave Blood Splatter Decal Pool (Floor & Wall Splatters)
+	var splat_tex: Texture2D = RetroAssetLoader.load_pixel_texture("res://assets/textures/blood_splatter.png")
+	var splat_mat := StandardMaterial3D.new()
+	splat_mat.albedo_texture = splat_tex
+	splat_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	splat_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	splat_mat.roughness = 0.35
+	var splat_box := BoxMesh.new()
+	splat_box.size = Vector3(2.4, 0.012, 2.4)
+	splat_box.material = splat_mat
+	for i in range(MAX_BLOOD_DECALS):
+		var mi := MeshInstance3D.new()
+		mi.mesh = splat_box
+		mi.visible = false
+		pools_root.add_child(mi)
+		blood_decal_pool.append(mi)
+
+	# 6. Temporary Bloody Boot Footprint Pool
+	var fp_tex: Texture2D = RetroAssetLoader.load_pixel_texture("res://assets/textures/blood_footprint.png")
+	var fp_mat := StandardMaterial3D.new()
+	fp_mat.albedo_texture = fp_tex
+	fp_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	fp_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fp_mat.roughness = 0.45
+	var fp_box := BoxMesh.new()
+	fp_box.size = Vector3(0.32, 0.01, 0.56)
+	fp_box.material = fp_mat
+	for i in range(MAX_FOOTPRINTS):
+		var mi := MeshInstance3D.new()
+		mi.mesh = fp_box
+		mi.visible = false
+		pools_root.add_child(mi)
+		footprint_pool.append({
+			"active": false,
+			"life": 0.0,
+			"mesh": mi
+		})
+
 
 func _reset_player_stats() -> void:
-	var c_cfg: Dictionary = DataCatalog.CHARACTERS.get(selected_char_id, DataCatalog.CHARACTERS["tepes_aristocrat"])
+	var c_cfg: Dictionary = DataCatalog.CHARACTERS.get(selected_char_id, DataCatalog.CHARACTERS["vlad_vampire"])
 	var offs: Dictionary = c_cfg["offsets"]
 	player_stats = {
 		"max_hp": 100.0 + float(offs.get("max_hp", 0.0)),
 		"armor": float(offs.get("armor", 0.0)),
 		"move_speed_pct": float(offs.get("move_speed_pct", 0.0)),
-		"slide_boost_pct": 0.0,
+		"slide_boost_pct": float(offs.get("slide_boost_pct", 0.0)),
 		"damage_mult": float(offs.get("damage_mult", 0.0)),
 		"crit_chance": 0.10 + float(offs.get("crit_chance", 0.0)),
 		"fire_rate_pct": float(offs.get("fire_rate_pct", 0.0)),
 		"melee_reach_pct": float(offs.get("melee_reach_pct", 0.0)),
 		"stagger_mult": float(offs.get("stagger_mult", 0.0)),
 		"life_leech": float(offs.get("life_leech", 0.0)),
-		"bleed_damage": 0.0,
+		"bleed_damage": float(offs.get("bleed_damage", 0.0)),
 		"bleed_rate_mult": 1.0,
-		"magnet_radius_pct": 0.0,
-		"vitae_mult": 0.0,
+		"magnet_radius_pct": float(offs.get("magnet_radius_pct", 0.0)),
+		"vitae_mult": float(offs.get("vitae_mult", 0.0)),
 		"blood_nova_on_kill": 0.0,
 		"sweet_spot_bonus": 0.0,
 		"parry_heal": 6.0,
 		"stake_bonus_count": 0.0,
-		"pierce_bonus": 0.0,
+		"pierce_bonus": float(offs.get("pierce_bonus", 0.0)),
 		"pellet_bonus": 0.0,
 		"familiar_bats": 0.0,
 		"familiar_skulls": 0.0,
@@ -317,6 +370,9 @@ func start_new_run() -> void:
 
 func _start_wave(wave_num: int) -> void:
 	current_wave = wave_num
+	# Clear persistent blood splatters from the previous wave
+	for bd in blood_decal_pool:
+		bd.visible = false
 	wave_pacing = DataCatalog.get_wave_pacing(current_wave, selected_danger_tier)
 	wave_enemies_to_spawn = int(wave_pacing["total_enemies"])
 	wave_enemies_spawned = 0
@@ -409,6 +465,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	player.physics_tick(delta)
+	_tick_blood_pools_and_footprints(delta)
 	_tick_wave_spawner(delta)
 	_tick_enemies_and_boids(delta)
 	_tick_projectiles(delta)
@@ -418,6 +475,79 @@ func _physics_process(delta: float) -> void:
 	_tick_familiars(delta)
 	_tick_damage_labels(delta)
 	_update_hud_labels()
+
+
+func _tick_blood_pools_and_footprints(dt: float) -> void:
+	var p_pos: Vector3 = player.global_position
+	# 1. Sway Hung Corpses when player sprints or slides past them!
+	var h_spd: float = player.get_horizontal_speed()
+	if h_spd > 4.0 and arena_builder != null:
+		arena_builder.apply_corpse_impulse(p_pos + Vector3(0, 1.5, 0), 3.8, h_spd * 0.25 * dt)
+
+	# 2. Coat player's boots in blood when stepping through Blood Fountains, Sacrificial Pit, or fresh splatters!
+	if arena_builder != null:
+		for pool_c in arena_builder.blood_pool_centers:
+			var pc: Vector3 = pool_c
+			if Vector2(p_pos.x - pc.x, p_pos.z - pc.z).length() < 2.6 and absf(p_pos.y - pc.y) < 1.5:
+				player.bloody_boots_timer = 6.0
+				break
+
+	# 3. Tick temporary bloody boot footprints
+	for fp in footprint_pool:
+		if not bool(fp["active"]):
+			continue
+		var life: float = float(fp["life"]) - dt
+		fp["life"] = life
+		var mi: MeshInstance3D = fp["mesh"]
+		if life <= 0.0:
+			fp["active"] = false
+			mi.visible = false
+		else:
+			mi.scale = Vector3.ONE * clampf(life / 2.5, 0.35, 1.0)
+
+
+func spawn_bloody_footprint(world_pos: Vector3, yaw_rad: float, is_left_foot: bool) -> void:
+	var fp: Dictionary = footprint_pool[footprint_cursor]
+	footprint_cursor = (footprint_cursor + 1) % MAX_FOOTPRINTS
+	fp["active"] = true
+	fp["life"] = 7.5
+	var mi: MeshInstance3D = fp["mesh"]
+	var side_vec := Vector3(cos(yaw_rad), 0.0, -sin(yaw_rad)) * (-0.18 if is_left_foot else 0.18)
+	var floor_y: float = -2.18 if (absf(world_pos.x) < 9.5 and absf(world_pos.z) < 9.5) else (3.82 if world_pos.y > 2.8 else 0.015)
+	mi.position = Vector3(world_pos.x + side_vec.x, floor_y, world_pos.z + side_vec.z)
+	mi.rotation = Vector3(0.0, yaw_rad, 0.0)
+	mi.scale = Vector3.ONE
+	mi.visible = true
+
+
+func spawn_blood_splatter_decal(hit_pos: Vector3, is_massive: bool) -> void:
+	var mi: MeshInstance3D = blood_decal_pool[blood_decal_cursor]
+	blood_decal_cursor = (blood_decal_cursor + 1) % MAX_BLOOD_DECALS
+	var floor_y: float = -2.185 if (absf(hit_pos.x) < 9.5 and absf(hit_pos.z) < 9.5) else (3.815 if hit_pos.y > 2.8 else 0.012)
+	mi.position = Vector3(hit_pos.x + randf_range(-0.4, 0.4), floor_y, hit_pos.z + randf_range(-0.4, 0.4))
+	mi.rotation = Vector3(0.0, randf() * TAU, 0.0)
+	var sc: float = randf_range(1.3, 2.1) if is_massive else randf_range(0.65, 1.25)
+	mi.scale = Vector3(sc, 1.0, sc)
+	mi.visible = true
+
+	# Register fresh gore pool so walking over it leaves bloody footprints!
+	if is_massive and arena_builder != null and arena_builder.blood_pool_centers.size() < 40:
+		arena_builder.blood_pool_centers.append(mi.position)
+
+	# If near a perimeter or balcony wall, project a vertical blood splatter onto the wall too!
+	if absf(hit_pos.x) > 36.5 or absf(hit_pos.z) > 31.0:
+		var w_mi: MeshInstance3D = blood_decal_pool[blood_decal_cursor]
+		blood_decal_cursor = (blood_decal_cursor + 1) % MAX_BLOOD_DECALS
+		if absf(hit_pos.x) > absf(hit_pos.z):
+			var wx: float = 40.7 if hit_pos.x > 0.0 else -40.7
+			w_mi.position = Vector3(wx, clampf(hit_pos.y, 0.8, 5.5), hit_pos.z)
+			w_mi.rotation_degrees = Vector3(0.0, 0.0, 90.0)
+		else:
+			var wz: float = 35.3 if hit_pos.z > 0.0 else -35.3
+			w_mi.position = Vector3(hit_pos.x, clampf(hit_pos.y, 0.8, 5.5), wz)
+			w_mi.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+		w_mi.scale = Vector3(sc * 0.9, 1.0, sc * 0.9)
+		w_mi.visible = true
 
 
 func _tick_wave_spawner(dt: float) -> void:
@@ -516,8 +646,8 @@ func _tick_enemies_and_boids(dt: float) -> void:
 				var diff: Vector3 = e.position - other.position
 				diff.y = 0.0
 				var dist_sq: float = diff.length_squared()
-				if dist_sq > 0.001 and dist_sq < 2.5:
-					sep += diff.normalized() / sqrt(dist_sq)
+				if dist_sq > 0.001 and dist_sq < 4.8:
+					sep += (diff.normalized() / sqrt(dist_sq)) * 1.45
 			e.boid_push = sep
 		e.tick_ai(dt, p_pos, self)
 
@@ -676,9 +806,10 @@ func resolve_melee_sector_attack(w_cfg: Dictionary, eff_reach: float, is_alt: bo
 			player.play_parry_clang()
 			trigger_hitstop(0.036)
 			heal_player(float(player_stats.get("parry_heal", 6.0)) * float(sliced_count))
-			if selected_char_id == "tepes_aristocrat":
+			if selected_char_id == "vlad_vampire":
 				player.blood_gauge = minf(player.max_blood_gauge, player.blood_gauge + 8.0)
 				player.speed_buff_timer = 3.0
+				_trigger_blood_nova(p_pos + Vector3(0, 1.0, 0), 42.0, 4.0)
 			show_banner("PARRIED & SLICED BLOOD ORB! (+350% REFLECT)", 1.4)
 
 	var base_dmg := float(w_cfg["base_damage"]) * (1.45 if is_alt else 1.0)
@@ -842,13 +973,13 @@ func check_bowling_impact(bowling_enemy: Node3D) -> void:
 
 func _compute_player_damage(raw_dmg: float, force_crit: bool) -> float:
 	var vel_bonus := 0.0
-	if selected_char_id == "nightrunner_wraith":
-		vel_bonus = maxf(0.0, (float(player.get_horizontal_speed()) - 9.4) * 0.03)
+	if selected_char_id == "fenrir_lycan":
+		vel_bonus = maxf(0.0, (float(player.get_horizontal_speed()) - 9.4) * 0.035)
 	var dmg := raw_dmg * (1.0 + float(player_stats["damage_mult"]) + vel_bonus)
 	var crit_c := float(player_stats["crit_chance"])
 	if force_crit or randf() < crit_c:
 		dmg *= 2.0
-		if selected_char_id == "tepes_aristocrat":
+		if selected_char_id == "vlad_vampire":
 			player.blood_gauge = minf(player.max_blood_gauge, player.blood_gauge + 8.0)
 			player.speed_buff_timer = 3.0
 	return dmg
@@ -872,8 +1003,12 @@ func damage_enemy(
 	enemy.trigger_hit_flash()
 	_spawn_batched_damage_label(enemy.get_instance_id(), hit_pos, final_amt, is_crit)
 
-	if can_proc and float(player_stats["life_leech"]) > 0.0:
-		heal_player(final_amt * float(player_stats["life_leech"]) * 0.12)
+	if can_proc:
+		spawn_blood_splatter_decal(hit_pos, is_crit)
+		if is_crit and selected_char_id == "malakor_lich":
+			enemy.bleed_stacks += 2
+		if float(player_stats["life_leech"]) > 0.0:
+			heal_player(final_amt * float(player_stats["life_leech"]) * 0.12)
 
 	if float(enemy.hp) <= 0.0:
 		_on_enemy_killed(enemy, is_crit)
@@ -886,14 +1021,18 @@ func _on_enemy_killed(enemy: Node3D, was_violent_crit: bool) -> void:
 	for i in range(2):
 		_spawn_blood_orb(death_pos, drop_val * 0.5)
 
+	spawn_blood_splatter_decal(death_pos, true)
+	if arena_builder != null:
+		arena_builder.apply_corpse_impulse(death_pos, 8.5, 3.2)
+
 	var gib_count := 9 if (was_violent_crit or selected_weapon_id in ["trench_shotgun", "stake_and_hammer", "occult_scythe"]) else 5
 	_spawn_gibs(death_pos, gib_count)
 	if gib_sfx_player != null and gib_sfx_player.stream != null:
 		gib_sfx_player.pitch_scale = randf_range(0.94, 1.06)
 		gib_sfx_player.play()
 
-	if float(player_stats.get("blood_nova_on_kill", 0.0)) > 0.0 or (selected_char_id == "nosferatu_leech" and death_pos.distance_to(player.global_position) < 3.8):
-		_trigger_blood_nova(death_pos, 48.0 * (1.0 + float(player_stats["damage_mult"])), 3.8)
+	if float(player_stats.get("blood_nova_on_kill", 0.0)) > 0.0 or (selected_char_id == "vlad_vampire" and death_pos.distance_to(player.global_position) < 4.0):
+		_trigger_blood_nova(death_pos, 48.0 * (1.0 + float(player_stats["damage_mult"])), 4.0)
 
 	wave_enemies_killed += 1
 	total_kills += 1
@@ -903,6 +1042,9 @@ func _on_enemy_killed(enemy: Node3D, was_violent_crit: bool) -> void:
 
 func _trigger_blood_nova(center: Vector3, dmg: float, radius: float) -> void:
 	_spawn_gibs(center, 7)
+	spawn_blood_splatter_decal(center, true)
+	if arena_builder != null:
+		arena_builder.apply_corpse_impulse(center, 11.0, 5.5)
 	for other_var in active_enemies.duplicate():
 		var other: Node3D = other_var
 		if is_instance_valid(other) and float(other.hp) > 0.0 and other.position.distance_to(center) <= radius:
@@ -934,7 +1076,7 @@ func heal_player(amount: float) -> void:
 	if player_hp + amount > player_max_hp:
 		var excess := (player_hp + amount) - player_max_hp
 		player_hp = player_max_hp
-		if selected_char_id == "nosferatu_leech" or float(player_stats["life_leech"]) > 0.0:
+		if selected_char_id == "vlad_vampire" or float(player_stats["life_leech"]) > 0.0:
 			blood_barrier = minf(player_max_hp * 0.5, blood_barrier + excess)
 	else:
 		player_hp += amount
@@ -1777,104 +1919,147 @@ func _refresh_altar_ui() -> void:
 func _build_pause_panel() -> void:
 	pause_panel = PanelContainer.new()
 	pause_panel.add_theme_stylebox_override("panel", _make_dark_panel_style(Color(0.88, 0.10, 0.18)))
-	pause_panel.position = Vector2(400, 110)
-	pause_panel.custom_minimum_size = Vector2(640, 560)
+	pause_panel.set_anchors_preset(Control.PRESET_CENTER)
+	pause_panel.position = Vector2(-320, -300)
+	pause_panel.custom_minimum_size = Vector2(640, 600)
 	pause_panel.visible = false
 	ui_layer.add_child(pause_panel)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 14)
+	vbox.add_theme_constant_override("separation", 10)
 	pause_panel.add_child(vbox)
 
 	var title := Label.new()
-	title.text = "CRYPT SANCTUM PAUSED — SETTINGS"
+	title.text = "CRYPT SANCTUM PAUSED"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 24)
 	title.add_theme_color_override("font_color", Color(0.95, 0.16, 0.22))
 	vbox.add_child(title)
 
+	var btn_resume := Button.new()
+	btn_resume.text = "RESUME SLAUGHTER [ESC]"
+	btn_resume.custom_minimum_size = Vector2(580, 44)
+	btn_resume.pressed.connect(_toggle_pause_menu)
+	vbox.add_child(btn_resume)
+
 	# 1. Master Volume Slider
 	var lbl_master := Label.new()
-	lbl_master.text = "Master Volume: 100%"
+	lbl_master.text = "Master Volume: %d dB" % int(DataCatalog.master_vol_db)
 	vbox.add_child(lbl_master)
 	var sld_master := HSlider.new()
-	sld_master.min_value = 0.0
-	sld_master.max_value = 100.0
-	sld_master.value = 100.0
+	sld_master.min_value = -40.0
+	sld_master.max_value = 6.0
+	sld_master.step = 1.0
+	sld_master.value = DataCatalog.master_vol_db
 	sld_master.value_changed.connect(func(v: float):
-		lbl_master.text = "Master Volume: %d%%" % int(v)
-		AudioServer.set_bus_volume_db(0, linear_to_db(maxf(0.001, v / 100.0)))
+		DataCatalog.master_vol_db = v
+		lbl_master.text = "Master Volume: %d dB" % int(v)
+		AudioServer.set_bus_volume_db(0, v)
 	)
 	vbox.add_child(sld_master)
 
 	# 2. SFX Volume Slider
 	var lbl_sfx := Label.new()
-	lbl_sfx.text = "SFX Volume (Weapons / Gore): 100%"
+	lbl_sfx.text = "SFX Volume (Weapons / Gore): %d dB" % int(DataCatalog.sfx_vol_db)
 	vbox.add_child(lbl_sfx)
 	var sld_sfx := HSlider.new()
-	sld_sfx.min_value = 0.0
-	sld_sfx.max_value = 100.0
-	sld_sfx.value = 100.0
+	sld_sfx.min_value = -40.0
+	sld_sfx.max_value = 6.0
+	sld_sfx.step = 1.0
+	sld_sfx.value = DataCatalog.sfx_vol_db
 	sld_sfx.value_changed.connect(func(v: float):
-		lbl_sfx.text = "SFX Volume (Weapons / Gore): %d%%" % int(v)
-		sfx_volume_offset_db = linear_to_db(maxf(0.001, v / 100.0))
-		player.sfx_player.volume_db = -3.0 + sfx_volume_offset_db
-		player.parry_sfx_player.volume_db = -2.0 + sfx_volume_offset_db
-		player.hammer_sfx_player.volume_db = -1.0 + sfx_volume_offset_db
-		gib_sfx_player.volume_db = -3.0 + sfx_volume_offset_db
-		orb_sfx_player.volume_db = -6.0 + sfx_volume_offset_db
+		DataCatalog.sfx_vol_db = v
+		lbl_sfx.text = "SFX Volume (Weapons / Gore): %d dB" % int(v)
+		sfx_volume_offset_db = v
+		player.sfx_player.volume_db = -3.0 + v
+		player.parry_sfx_player.volume_db = -2.0 + v
+		player.hammer_sfx_player.volume_db = -1.0 + v
+		gib_sfx_player.volume_db = -3.0 + v
+		orb_sfx_player.volume_db = -6.0 + v
 	)
 	vbox.add_child(sld_sfx)
 
 	# 3. Music Volume Slider
 	var lbl_mus := Label.new()
-	lbl_mus.text = "Catacomb Organ Ambience (Music): 80%"
+	lbl_mus.text = "Catacomb Organ Ambience (Music): %d dB" % int(DataCatalog.music_vol_db)
 	vbox.add_child(lbl_mus)
 	var sld_mus := HSlider.new()
-	sld_mus.min_value = 0.0
-	sld_mus.max_value = 100.0
-	sld_mus.value = 80.0
+	sld_mus.min_value = -40.0
+	sld_mus.max_value = 6.0
+	sld_mus.step = 1.0
+	sld_mus.value = DataCatalog.music_vol_db
 	sld_mus.value_changed.connect(func(v: float):
-		lbl_mus.text = "Catacomb Organ Ambience (Music): %d%%" % int(v)
+		DataCatalog.music_vol_db = v
+		lbl_mus.text = "Catacomb Organ Ambience (Music): %d dB" % int(v)
 		if music_player != null:
-			music_player.volume_db = -9.0 + linear_to_db(maxf(0.001, v / 100.0))
+			music_player.volume_db = v
 	)
 	vbox.add_child(sld_mus)
 
 	# 4. Mouse Sensitivity Slider
 	var lbl_sens := Label.new()
-	lbl_sens.text = "Mouse Look Sensitivity: 100%"
+	lbl_sens.text = "Mouse Sensitivity: %.1f" % (DataCatalog.mouse_sens * 1000.0)
 	vbox.add_child(lbl_sens)
 	var sld_sens := HSlider.new()
-	sld_sens.min_value = 25.0
-	sld_sens.max_value = 250.0
-	sld_sens.value = 100.0
+	sld_sens.min_value = 0.5
+	sld_sens.max_value = 6.5
+	sld_sens.step = 0.1
+	sld_sens.value = DataCatalog.mouse_sens * 1000.0
 	sld_sens.value_changed.connect(func(v: float):
-		lbl_sens.text = "Mouse Look Sensitivity: %d%%" % int(v)
-		player.mouse_sensitivity = 0.0022 * (v / 100.0)
+		DataCatalog.mouse_sens = v * 0.001
+		lbl_sens.text = "Mouse Sensitivity: %.1f" % v
 	)
 	vbox.add_child(sld_sens)
 
-	# 5. Fullscreen Toggle
-	var chk_fs := CheckButton.new()
+	# 5. Invert Y & Fullscreen Toggles
+	var chk_row := HBoxContainer.new()
+	chk_row.add_theme_constant_override("separation", 24)
+	vbox.add_child(chk_row)
+
+	var chk_inv := CheckBox.new()
+	chk_inv.text = "Invert Mouse Y-Axis"
+	chk_inv.button_pressed = DataCatalog.invert_y
+	chk_inv.toggled.connect(func(on: bool):
+		DataCatalog.invert_y = on
+	)
+	chk_row.add_child(chk_inv)
+
+	var chk_fs := CheckBox.new()
 	chk_fs.text = "Fullscreen Cathedral Mode"
+	chk_fs.button_pressed = DataCatalog.is_fullscreen
 	chk_fs.toggled.connect(func(on: bool):
+		DataCatalog.is_fullscreen = on
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if on else DisplayServer.WINDOW_MODE_WINDOWED)
 	)
-	vbox.add_child(chk_fs)
+	chk_row.add_child(chk_fs)
 
-	var btn_resume := Button.new()
-	btn_resume.text = "RESUME CRYPT SLAUGHTER [ESC]"
-	btn_resume.custom_minimum_size = Vector2(580, 50)
-	btn_resume.pressed.connect(_toggle_pause_menu)
-	vbox.add_child(btn_resume)
-
-	var btn_menu := Button.new()
-	btn_menu.text = "ABANDON RUN & RETURN TO LOADOUT"
-	btn_menu.custom_minimum_size = Vector2(580, 46)
-	btn_menu.pressed.connect(func():
+	var btn_restart := Button.new()
+	btn_restart.text = "RESTART RUN"
+	btn_restart.custom_minimum_size = Vector2(580, 42)
+	btn_restart.pressed.connect(func():
 		is_paused = false
 		pause_panel.visible = false
-		_show_loadout_screen()
+		start_new_run()
+	)
+	vbox.add_child(btn_restart)
+
+	var btn_charsel := Button.new()
+	btn_charsel.text = "CHANGE BLOODLINE / WEAPON LOADOUT"
+	btn_charsel.custom_minimum_size = Vector2(580, 42)
+	btn_charsel.pressed.connect(func():
+		is_paused = false
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		get_tree().change_scene_to_file("res://scenes/menus/CharacterSelect.tscn")
+	)
+	vbox.add_child(btn_charsel)
+
+	var btn_menu := Button.new()
+	btn_menu.text = "ABANDON TO MAIN MENU"
+	btn_menu.custom_minimum_size = Vector2(580, 42)
+	btn_menu.pressed.connect(func():
+		is_paused = false
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		get_tree().change_scene_to_file("res://scenes/menus/MainMenu.tscn")
 	)
 	vbox.add_child(btn_menu)
 
@@ -1882,37 +2067,51 @@ func _build_pause_panel() -> void:
 func _build_gameover_panel() -> void:
 	gameover_panel = PanelContainer.new()
 	gameover_panel.add_theme_stylebox_override("panel", _make_dark_panel_style(Color(0.95, 0.08, 0.14)))
-	gameover_panel.position = Vector2(380, 220)
-	gameover_panel.custom_minimum_size = Vector2(680, 320)
+	gameover_panel.set_anchors_preset(Control.PRESET_CENTER)
+	gameover_panel.position = Vector2(-340, -180)
+	gameover_panel.custom_minimum_size = Vector2(680, 350)
 	gameover_panel.visible = false
 	ui_layer.add_child(gameover_panel)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 18)
+	vbox.add_theme_constant_override("separation", 14)
 	gameover_panel.add_child(vbox)
 
 	var t := Label.new()
 	t.text = "YOU WERE CONSUMED BY THE CATACOMBS"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	t.add_theme_font_size_override("font_size", 26)
 	t.add_theme_color_override("font_color", Color(0.95, 0.12, 0.18))
 	vbox.add_child(t)
 
-	var btn := Button.new()
-	btn.text = "RETURN TO BLOODLINE LOADOUT [ENTER / SPACE]"
-	btn.custom_minimum_size = Vector2(600, 60)
-	btn.pressed.connect(_show_loadout_screen)
-	vbox.add_child(btn)
+	var btn_retry := Button.new()
+	btn_retry.text = "RETRY SLAUGHTER [ENTER / SPACE]"
+	btn_retry.custom_minimum_size = Vector2(600, 48)
+	btn_retry.pressed.connect(start_new_run)
+	vbox.add_child(btn_retry)
+
+	var btn_loadout := Button.new()
+	btn_loadout.text = "CHANGE BLOODLINE & WEAPON LOADOUT"
+	btn_loadout.custom_minimum_size = Vector2(600, 46)
+	btn_loadout.pressed.connect(func():
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		get_tree().change_scene_to_file("res://scenes/menus/CharacterSelect.tscn")
+	)
+	vbox.add_child(btn_loadout)
+
+	var btn_main := Button.new()
+	btn_main.text = "RETURN TO MAIN MENU"
+	btn_main.custom_minimum_size = Vector2(600, 46)
+	btn_main.pressed.connect(func():
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		get_tree().change_scene_to_file("res://scenes/menus/MainMenu.tscn")
+	)
+	vbox.add_child(btn_main)
 
 
 func _show_loadout_screen() -> void:
-	phase = GamePhase.LOADOUT_SELECT
-	is_paused = false
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	loadout_panel.visible = true
-	altar_panel.visible = false
-	pause_panel.visible = false
-	gameover_panel.visible = false
-	_refresh_loadout_ui()
+	get_tree().change_scene_to_file("res://scenes/menus/CharacterSelect.tscn")
 
 
 func _trigger_game_over() -> void:

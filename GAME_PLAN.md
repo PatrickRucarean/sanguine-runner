@@ -57,10 +57,14 @@ To achieve rapid prototype iteration, zero external asset dependency (procedural
    - Crisp `64x64` and `128x128` pixel-art textures (`assets/textures/`) for gothic catacomb brick, wet mossy stone tiles, rotten timber catwalks, rusted iron grates, and blood-stained altars.
 2. **Real Low-Poly 3D Models (`assets/models/*.obj`):**
    - **No primitive cylinders with cones on their heads.** Enemies (*Catacomb Ghoul*, *Blood Cultist*, *Crypt Nightstalker*, *Iron Inquisitor*, *Cathedral Executioner*) and 1st-person Weapons (*Alucard Sword*, *Occult Scythe*, *Stake & Hammer*, *Jackal & Casull*, *Trench Shotgun*) use sculpted Quake/DUSK-style low-poly 3D `.obj` meshes with UV-mapped pixel textures.
-3. **Oppressive Gothic Catacomb Lighting & Volumetric Fog:**
-   - Wall-mounted iron torches (`assets/models/wall_torch.obj`) with flickering `OmniLight3D` nodes (`orange-amber #FF6A1A` and `crimson #E60012`) + dense crimson-black atmospheric depth/volumetric fog (`WorldEnvironment`), replacing any empty black void with a living gothic catacomb.
-4. **Fixed 120 Hz Physics & CharacterBody3D Controller:**
-   - Physics ticks locked at **120 Hz (`physics_ticks_per_second = 120`)** driving a custom `CharacterBody3D` controller with Quake air-strafing, bunny-hopping, ground slide, wall-running, and ledge mantling.
+3. **Oppressive Gothic Catacomb Lighting, Macabre DUSK Props & Blood VFX:**
+   - Wall-mounted iron torches (`assets/models/wall_torch.obj`) with flickering `OmniLight3D` nodes (`orange-amber #FF6A1A` and `crimson #E60012`) + dense crimson-black atmospheric depth/volumetric fog (`WorldEnvironment`).
+   - **Functional Blood Fountains (`blood_fountain.obj`)** with flowing viscous blood droplet streams, **Chained Hung Corpses (`hung_corpse.obj`)** with pendulum sway physics reacting to player momentum & explosions, **Impaled Skull Pikes (`impaled_skull_pike.obj`)**, **Wrought-Iron Grates (`wrought_iron_grate.obj`)**, **Persistent Wave Blood Splatter Decals (`blood_splatter.png`)**, and **Bloody Boot Footprints (`blood_footprint.png`)**.
+4. **Multi-Scene Architecture (`MainMenu.tscn` -> `CharacterSelect.tscn` -> `Main.tscn`):**
+   - **`res://scenes/menus/MainMenu.tscn`:** DUSK-inspired 3D butcher cellar / crypt backdrop with slow-panning camera, sacrifice table with embedded `meat_cleaver.obj`, flickering candle, swaying corpses, drifting red embers, and hover/click audio feedback.
+   - **`res://scenes/menus/CharacterSelect.tscn`:** *Risk of Rain 2* + *DUSK* split-screen character & weapon loadout stage featuring **3 Distinct Supernatural Characters** (*Vlad Tepes — Nosferatu Vampire Lord*, *Fenrir Varcolac — Carpathian Lycanthrope*, *Malakor Moroi — Abyssal Plague-Lich*) on a live 3D rotating stone pedestal holding their selected weapon from the **5-Weapon Shared Arsenal**.
+   - **Separate First-Person Dual-Wield Rig (`left_arm_pivot` & `right_arm_pivot`):** Left hand independently holds & throws the Iron Vampire Stake (`stake_held.obj`) with a belt-bandolier reload animation on LMB, while the right hand independently grips, winds up overhead, and slams the Occult War-Hammer (`war_hammer.obj`) on RMB.
+   - **Fixed 120 Hz Physics, `CharacterBody3D` Capsule Enemy Collisions & Crowd Separation:** Enemies use `CharacterBody3D` + `CapsuleShape3D` (`collision_layer = 2, collision_mask = 1 | 2 | 4`) with `move_and_slide()` and strong soft crowd separation (`boid_push`) so monsters physically collide with walls/floors/monsters and never clip into each other.
 
 ### 1.3 High-Level System Architecture Diagram
 
