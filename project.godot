@@ -1,0 +1,38 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="SANGUINE_RUNNER — Retro Gothic Boomer-Shooter"
+config/description="1st-Person Movement Roguelike Arena Shooter in DUSK/Quake/Blood Retro Style"
+run/main_scene="res://scenes/MainCatacomb.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+boot_splash/bg_color=Color(0.04, 0.03, 0.05, 1)
+
+[display]
+
+window/size/viewport_width=1440
+window/size/viewport_height=810
+window/size/mode=0
+window/size/resizable=true
+window/vsync/vsync_mode=1
+
+[physics]
+
+common/physics_ticks_per_second=120
+3d/default_gravity=28.0
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+anti_aliasing/quality/msaa_3d=0
+environment/defaults/default_clear_color=Color(0.04, 0.02, 0.03, 1)

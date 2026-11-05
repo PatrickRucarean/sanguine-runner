@@ -49,15 +49,18 @@ To achieve rapid prototype iteration, zero external asset dependency (procedural
 | **Object Pooling & ECS** | Pure TypeScript TypedArrays (`Float32Array`) + `THREE.InstancedMesh` draws 5,000 Blood Orbs and 300 enemies in **2 draw calls**. | `MultiMeshInstance3D` + custom node pooling or C# structs. GDScript object overhead can bottleneck at 1,000+ active projectiles/orbs. |
 | **AI-Assisted Code Generation** | **100% self-contained text files** (`.ts`, `.json`, `.glsl`). Zero opaque binary assets required to build and play immediately. | Requires `.godot` project config, binary/text `.tscn` hierarchy coordination, and local engine installation. |
 
-### 1.2 Primary Architectural Recommendation: **TypeScript + Three.js + Rapier3D (WASM) + Bitecs/TypedArray Data Store**
-*(With direct 1:1 structural parity for porting to Godot 4.x `CharacterBody3D` + `MultiMeshInstance3D`)*
+### 1.2 Primary Architectural Stack: **Native Godot 4.x (`.exe`) — DUSK / Quake / Blood Retro Pipeline**
 
-For rapid, code-driven development in this repository, **Three.js + `@dimforge/rapier3d-compat` + Vite + TypeScript** is the optimal primary implementation stack:
-1. **Zero-Asset Procedural Brutalism:** Weapons, gothic pillars, cathedrals, enemies, and familiars can be constructed algorithmically via CSG/low-poly buffer geometries with flat-shaded vertex colors and procedural textures—meaning the game runs out-of-the-box with `npm run dev` without waiting on Blender asset pipelines.
-2. **Fixed-Timestep Decoupled Loop:** Physics and combat logic execute on a strict **120 Hz fixed timestep (`dt = 1 / 120 = 8.333ms`)** accumulator loop, while rendering interpolates transforms smoothly at the monitor's native refresh rate (60–240+ Hz).
-3. **Hybrid ECS / Data-Oriented Architecture:**
-   - **Player & Weapons:** Explicit Hierarchical Finite State Machines (HFSM) for tactile, frame-exact responsiveness.
-   - **Swarm Enemies, Projectiles, Particles, & Blood Orbs:** Struct-of-Arrays (SoA) backed by pre-allocated `Float32Array` / `Int32Array` buffers and rendered via `THREE.InstancedMesh`, eliminating garbage collection (GC) pauses during Wave 20+ bullet-hell storms.
+`SANGUINE_RUNNER` is built as a **Native Desktop Executable (`.exe`) on Godot 4.x (`Godot_v4.3-stable_win64.exe`)** with a retro boomer-shooter rendering & asset pipeline inspired by *DUSK*, *Quake*, and *Blood*:
+1. **Retro Rendering & Crisp Pixel Textures (`64x64` / `128x128` Nearest):**
+   - Configured with `Nearest` texture filtering (`default_texture_filter = 0`) and diffuse/unshaded retro materials (zero glossy modern PBR).
+   - Crisp `64x64` and `128x128` pixel-art textures (`assets/textures/`) for gothic catacomb brick, wet mossy stone tiles, rotten timber catwalks, rusted iron grates, and blood-stained altars.
+2. **Real Low-Poly 3D Models (`assets/models/*.obj`):**
+   - **No primitive cylinders with cones on their heads.** Enemies (*Catacomb Ghoul*, *Blood Cultist*, *Crypt Nightstalker*, *Iron Inquisitor*, *Cathedral Executioner*) and 1st-person Weapons (*Alucard Sword*, *Occult Scythe*, *Stake & Hammer*, *Jackal & Casull*, *Trench Shotgun*) use sculpted Quake/DUSK-style low-poly 3D `.obj` meshes with UV-mapped pixel textures.
+3. **Oppressive Gothic Catacomb Lighting & Volumetric Fog:**
+   - Wall-mounted iron torches (`assets/models/wall_torch.obj`) with flickering `OmniLight3D` nodes (`orange-amber #FF6A1A` and `crimson #E60012`) + dense crimson-black atmospheric depth/volumetric fog (`WorldEnvironment`), replacing any empty black void with a living gothic catacomb.
+4. **Fixed 120 Hz Physics & CharacterBody3D Controller:**
+   - Physics ticks locked at **120 Hz (`physics_ticks_per_second = 120`)** driving a custom `CharacterBody3D` controller with Quake air-strafing, bunny-hopping, ground slide, wall-running, and ledge mantling.
 
 ### 1.3 High-Level System Architecture Diagram
 
@@ -457,39 +460,39 @@ Unlike sprawling dungeon crawlers where players get lost in empty hallways, `SAN
 
 ---
 
-### 4.2 Threat Budget Algorithm & Spawn Pacing
+### 4.2 Slow-to-High Paced Difficulty Curve & Spawn Algorithm
 
-The **Wave Director** operates on two simultaneous credit pools:
-1. **Initial Wave Seed Budget ($B_{\text{init}}$):** Spawns the opening formation when the wave bell tolls.
-2. **Continuous Trickle & Surge Income ($R_{\text{credit}}$):** Credits generated per second during the wave. Every $12\text{ seconds}$, a **Blood Moon Surge** multiplies credit income by $2.2\times$ for $3\text{ seconds}$ to create dramatic combat peaks.
+Instead of overwhelming the player in Wave 1 with an instant swarm, `SANGUINE_RUNNER` follows a deliberate **Slow-to-High Paced Boomer-Shooter Escalation Curve** (*DUSK* / *Blood* atmospheric opening into *Ultrakill* / *Brotato* late-wave bullet-heaven):
 
-#### Mathematical Budget Curves (Wave $w \ge 1$)
+1. **Atmospheric Opening (Waves 1–3):**
+   - Only **2–4 slow enemies alive simultaneously** ($N_{\text{cap}}(1) = 3$, $N_{\text{cap}}(2) = 4$, $N_{\text{cap}}(3) = 5$) with a total wave count starting at **6 enemies in Wave 1**.
+   - Early enemies are slow, heavy-footed **Catacomb Ghouls** ($v_{\text{base}} = 3.4\text{ m/s}$), giving the player breathing room to explore the Gothic Catacomb arena, test wall-running and sliding across arches, and feel the weight of their chosen single weapon.
+2. **Gradual Wave-Over-Wave Escalation (+15–20% Count & +3–5% Speed per Wave):**
+   - **Total Wave Enemy Count ($N_{\text{total}}$):** Increases by **`+18%` per wave** ($N_{\text{total}}(w) = \lfloor 6 \cdot (1.18)^{w-1} \rfloor + 2(w-1)$).
+   - **Enemy Movement Speed Multiplier ($M_{\text{speed}}$):** Increases by **`+4%` per wave** ($M_{\text{speed}}(w) = 1.0 + 0.04(w - 1)$), so ghouls and cultists gradually become more aggressive.
+   - **Bullet-Heaven Threshold (Wave 8–10+):** By Wave 8–10, simultaneous active caps reach $16–28+$ enemies with overlapping *Blood Cultist* projectile volleys and *Nightstalker* wall-leaps, escalating into full bullet-heaven chaos.
 
-$$B_{\text{total}}(w) = \lfloor 35 \cdot w^{1.38} + 15 \cdot (1.18)^w \rfloor$$
+#### Mathematical Escalation Curves (Wave $w \ge 1$)
 
-$$R_{\text{credit}}(w) = \frac{B_{\text{total}}(w)}{T_{\text{wave}}(w)} \cdot \left(0.85 + 0.30 \cdot \sin\left(\frac{2\pi t}{12.0}\right)\right)$$
+$$N_{\text{total}}(w) = \text{round}\left(6 \cdot (1.18)^{w - 1} + 1.5(w - 1)\right)$$
 
-$$\text{Max Simultaneous Alive Cap: } N_{\text{cap}}(w) = \min\left(180, \; 14 + 7w\right)$$
+$$N_{\text{cap}}(w) = \begin{cases} 2 + w & \text{if } w \le 3 \quad (\text{2–4 simultaneous slow enemies in Waves 1–3}) \\ \min\left(85, \; \text{round}(5 \cdot (1.20)^{w - 3} + 2(w - 3))\right) & \text{if } w \ge 4 \end{cases}$$
 
-- **Kill-Speed Dynamic Accelerator:** If the player slaughters enemies so fast that active enemy count drops below $30\%$ of $N_{\text{cap}}(w)$, the Director boosts $R_{\text{credit}}(w)$ by $+75\%$ and immediately triggers a **Reinforcement Rift**, rewarding high-skill players with denser crowds and more Blood Orbs per wave.
-- **Line-of-Sight & Distance Spawn Scoring:** Spawn nodes are scored using:
-  $$S(\mathbf{p}_{\text{node}}) = w_{\text{dist}} \cdot \exp\left(-\frac{(\|\mathbf{p}_{\text{node}} - \mathbf{p}_{\text{player}}\| - 22.0)^2}{2 \cdot 10^2}\right) - w_{\text{fov}} \cdot \max(0, \hat{\mathbf{f}}_{\text{player}} \cdot \hat{\mathbf{d}}_{\text{node}})$$
-  This guarantees enemies spawn roughly $15\text{ m}–32\text{ m}$ away and preferentially outside the player's direct center crosshair or emerging from crimson ground rifts with a $0.8\text{ s}$ pillar-of-blood telegraph.
+$$M_{\text{enemySpeed}}(w) = 1.0 + 0.04 \cdot (w - 1) \quad (+4\%\text{ speed per wave})$$
 
 ---
 
-### 4.3 Enemy Archetype Pool & AI Steering Behaviors
+### 4.3 Enemy Archetype Pool & Distinct Visual/Combat Behaviors
 
-To maintain 120+ FPS with 150+ enemies on screen, enemy movement uses **2.5D Spatial Grid Flow-Fields + Local Boids Separation + Jump-Link Traversal** rather than heavy per-agent A* recalculations every frame.
+Every enemy uses an articulated low-poly 3D `.obj` model (`assets/models/`) with crisp `Nearest`-filtered `64x64` pixel textures and distinct silhouettes:
 
-| Archetype | Name | Cost | Min Wave | Base HP | Speed | Poise | AI Role & Combat Behavior |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Fodder** | *Thrall Husk* | $3$ | $1$ | $40$ | $6.5\text{ m/s}$ | $20$ | Swarms in packs of 5–12. Slow melee lunge. Walking blood bags designed to be cleaved, shot-pierced, and kicked into crowds. |
-| **Rusher** | *Feral Nightstalker* | $7$ | $2$ | $65$ | $14.0\text{ m/s}$ | $30$ | Quadrupedal gothic ghoul. Bounds along walls and leaps at the player with a high-pitched metallic screech ($0.45\text{ s}$ telegraph). Forces continuous air-strafing/wall-running. |
-| **Ranged Cultist** | *Hemomancer Acolyte* | $10$ | $3$ | $85$ | $5.0\text{ m/s}$ | $35$ | Keeps $18\text{ m}$ distance, climbs elevated ledges. Fires glowing **Crimson Orbs** ($v = 24\text{ m/s}$) in 3-orb spreads—prime targets for **Alucard Sword Parry Deflection**. |
-| **Area Denial** | *Censer Zealot* | $16$ | $5$ | $150$ | $6.0\text{ m/s}$ | $60$ | Swings a burning occult censer that leaves temporary corrupted floor zones, forcing the player onto walls and air routes. Explodes if killed via headshot. |
-| **Mid Bruiser** | *Iron Inquisitor* | $25$ | $6$ | $320$ | $8.5\text{ m/s}$ | $110$ | Carries a directional iron tower shield that blocks front non-piercing hitscan; vulnerable to **Stake & Hammer Armor Shatter**, **The Jackal** armor-piercing rounds, **Occult Scythe** wide-arc sweet-spot reaping, or **Slide Blood-Kick** shield break. |
-| **Heavy Juggernaut** | *Cathedral Executioner* | $55$ | $8$ | $850$ | $7.5\text{ m/s}$ | $240$ | $3.2\text{ m}$ tall armored colossus. Fires sweeping chains of hellfire projectiles and performs ground-slam shockwaves (jumpable ring). Drops a **Royal Vitae Heart** ($10\times$ Blood + 1 Free Relic). |
+| Archetype | Name & 3D Model | Min Wave | Base HP | Base Speed | AI Role & Distinct Visual/Combat Behavior |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| **Fodder** | **Catacomb Ghoul** (`ghoul.obj`) | $1$ | $45$ | $3.4\text{ m/s}$ | Hunched, rotting crypt zombie with exposed ribs and elongated claws. Lurches heavily toward the player with a shambling gait sway. Ideal for testing melee reach, sweet-spots, and headshots. |
+| **Ranged** | **Blood Cultist** (`cultist.obj`) | $2$ | $70$ | $3.8\text{ m/s}$ | Hooded, crimson-robed occultist wielding a ritual skull staff. Maintains mid-range ($12\text{ m}–20\text{ m}$) and hurls **Slow Blood/Fire Orbs** ($v = 10.5\text{ m/s}$) that can be **dodged with movement or sliced/parried in mid-air with the sword/scythe!** |
+| **Stalker** | **Crypt Nightstalker** (`stalker.obj`) | $3$ | $65$ | $7.8\text{ m/s}$ | Agile quadrupedal horned beast that bounds rapidly across the catacomb, clings to pillars/walls, and **leaps off walls** toward the player with a metallic hiss. |
+| **Mid Bruiser** | **Iron Inquisitor** (`inquisitor.obj`) | $5$ | $220$ | $4.8\text{ m/s}$ | Armored cathedral knight carrying a riveted iron tower shield. Vulnerable to **Stake & Hammer Armor Shatter**, **Jackal AP rounds**, **Occult Scythe** wide sweet-spot reaps, or **Slide Blood-Kicks**. |
+| **Boss / Heavy** | **Cathedral Executioner** (`executioner.obj`) | $8$ | $680$ | $5.2\text{ m/s}$ | Towering horned executioner with a massive great-axe. Fires sweeping arcs of sliceable blood-fire projectiles and slams the floor. |
 
 ### 4.4 Enemy Stat Scaling Per Wave
 Enemy health and damage scale more gradually than spawn density through Wave 12 so the player feels their multi-kill power fantasy, then ramp exponentially in Wave 15+ Endless mode:
@@ -500,16 +503,16 @@ $$\text{DMG}_{\text{enemy}}(w, d) = \text{DMG}_{\text{base}} \cdot M_{\text{DMG}
 
 where $d \in \{0, 1, 2, 3, 4, 5\}$ is the selected **Danger / Corruption Tier**.
 
-### 4.5 Wave Progression Pacing Table (Waves 1 to 20+)
+### 4.5 Wave Progression Pacing Table (Waves 1 to 20+ — Slow-to-High Curve)
 
-| Wave | Duration | Budget ($B_{\text{total}}$) | Active Cap ($N_{\text{cap}}$) | Dominant Composition & Pacing Feel |
-| :---: | :---: | :---: | :---: | :--- |
-| **Wave 1** | $25\text{ s}$ | $52$ | $21$ | **Deliberate & Readable:** $100\%$ *Thrall Husks*. Teaches bhop rhythm, headshots/sweet-spots, and Slide Blood-Kicks. |
-| **Wave 3** | $35\text{ s}$ | $184$ | $35$ | **Vertical Awakening:** Introduces *Nightstalkers* & *Hemomancers*. Player starts parrying projectiles and wall-running. |
-| **Wave 6** | $50\text{ s}$ | $455$ | $56$ | **Tactical Pressure:** *Iron Inquisitors* & *Censer Zealots* join the swarm. Floor becomes hazardous; air/wall combat shines. |
-| **Wave 10** | $70\text{ s}$ | $918$ | $84$ | **First Cathedral Climax:** Dual *Cathedral Executioners* + relentless *Nightstalker* packs. First **Single-Weapon Eldritch Keystone** unlocked. |
-| **Wave 15** | $90\text{ s}$ | $1,648$ | $119$ | **Bullet-Hell Symphony:** Dense crossfire of 40+ *Hemomancer* orbs, *Elite Crimson Variants*, and passive player proc chains painting the arena red. |
-| **Wave 20+** | $90\text{ s}$ | $3,500+$ | $154–180$ | **Apocalyptic Vampire Godhood:** Screen-filling gothic bullet-hell. Player moves at $25+\text{ m/s}$, Orbiting Bats and Blood Wolves shred the flanks, and every kill triggers cascading blood novae. |
+| Wave | Duration | Total Enemies ($N_{\text{total}}$) | Active Cap ($N_{\text{cap}}$) | Speed Mult | Dominant Composition & Pacing Feel |
+| :---: | :---: | :---: | :---: | :---: | :--- |
+| **Wave 1** | $35\text{ s}$ | $6$ | $2–3$ | $1.00\times$ | **Atmospheric Catacomb Awakening:** Only $2–3$ slow *Catacomb Ghouls* ($3.4\text{ m/s}$) at a time. Lets the player explore the gothic arches, wall-runs, and single-weapon feel. |
+| **Wave 2** | $40\text{ s}$ | $9$ | $3–4$ | $1.04\times$ | **Hooded Ritualists:** Slow *Catacomb Ghouls* joined by 1–2 *Blood Cultists* hurling slow crimson fire orbs ($10.5\text{ m/s}$) that can be dodged or sliced/parried in mid-air. |
+| **Wave 3** | $45\text{ s}$ | $12$ | $4$ | $1.08\times$ | **Stalkers in the Torchlight:** First *Crypt Nightstalkers* leap from catacomb walls alongside $2–3$ ghouls and cultists. Still atmospheric and readable. |
+| **Wave 5** | $50\text{ s}$ | $18$ | $8$ | $1.16\times$ | **Rising Bloodlust:** $+18\%$ enemy count per wave compounds. *Iron Inquisitors* join the crypt; movement chains become essential. |
+| **Wave 8** | $65\text{ s}$ | $30$ | $16$ | $1.28\times$ | **High-Paced Boomer-Shooter Threshold:** First *Cathedral Executioner* + dense *Cultist* crossfire + *Nightstalker* packs. |
+| **Wave 10+** | $75–90\text{ s}$ | $45–120+$ | $24–65+$ | $1.36\times+$ | **Frenetic Bullet-Heaven Climax:** Full-screen gothic bullet-heaven. Player weapon synergies, *Shadow Bats*, *Blood Wolves*, and **Eldritch Keystones** paint the catacombs crimson. |
 
 ---
 
@@ -925,45 +928,27 @@ To sustain a locked 120+ FPS when hundreds of projectiles, blood bursts, gibs, a
 > * **Remote Repository:** `https://github.com/PatrickRucarean/sanguine-runner.git`  
 > * Fiecare fază și milestone major verificat se închide printr-un commit atomic și push în repository-ul `sanguine-runner` (ex: `checkpoint(phase-1): 120Hz kinematic controller & movement greybox`).
 
-### Proposed Project Directory Structure
+### Proposed Project Directory Structure (Native Godot 4.x + Retro Assets)
 ```text
 g:/Lowkey/
 ├── GAME_PLAN.md
-├── index.html
-└── src/
-    ├── main.js                        # Bootstrapping, 120Hz fixed loop & render interpolator
-    ├── core/
-    │   ├── InputManager.js            # Raw mouse look, buffered jump/slide/fire inputs (zero weapon-swap bloat)
-    │   └── CameraRig.js               # Procedural FOV warp, FOV punch, trauma shake, head-bob & wall-tilt
-    ├── physics/
-    │   ├── Vec3.js                    # Zero-alloc 3D vector math utilities
-    │   ├── MovementConfig.js          # Tunable constants for ground, air-strafe, slide, wall-run & mantle
-    │   ├── CollisionWorld.js          # Swept AABB/Capsule collision & raycasting against arena geometry
-    │   └── KinematicController.js     # HFSM (Idle, Run, Slide, WallRun, Air, Mantle)
-    ├── world/
-    │   ├── ArenaGeometryData.js       # Modular ArenaDefinitions (Cathedral Nave, Sanguine Aqueducts, etc.)
-    │   └── ArenaBuilder.js            # Procedural brutalist gothic geometry & jump-pad compiler
-    ├── combat/
-    │   ├── CharacterCatalog.js        # Decoupled Bloodline classes (stat offsets, unique passives, allowedStartingWeapons)
-    │   ├── WeaponDefinitions.js       # Data-driven configs: Jackal/Casull, Shotgun, Stake & Hammer, Alucard Sword, Occult Scythe
-    │   ├── WeaponSystem.js            # Single-Weapon state machine, differentiated melee hitbox sectors & sweet-spot math
-    │   ├── VFXAndPoolManager.js       # Pre-allocated InstancedMesh pools (gibs, blood bursts, tracers, batched damage numbers)
-    │   └── TargetHuskManager.js       # Poise/Stagger husks, armor flags, Slide Blood-Kick bowling & Vampiric Execution
-    ├── ai/
-    │   ├── WaveDirector.js            # Credit budget curve, trickle/surge spawner, Danger 0-5 corruption mutators
-    │   ├── EnemySwarmManager.js       # SoA enemy state, interleaved Boids separation, 6 gothic archetypes
-    │   └── FamiliarSystem.js          # Autonomous Shadow Bats, Spectral Skulls, Blood Wolves
-    ├── progression/
-    │   ├── ScalingEngine.js           # Additive/Multiplicative/Hyperbolic/Overflow aggregator + melee_reach_multiplier
-    │   ├── PerkCatalog.js             # Single-weapon filtered kinetic, occult, melee geometry, & Eldritch keystone perks
-    │   ├── AltarDraftEngine.ts/js     # Per-card targeted rerolls (Q/W/E), Blood Dice bank, Blood Tithe & Pity math
-    │   └── BloodOrbManager.js         # Spatial-hashed Vitae orb pool, magnetism, & auto-coalescence
-    ├── audio/
-    │   └── AudioManager.js            # Procedural WebAudio 3-layer synth with mandatory ±5% random pitch variation
-    └── rendering/
-        ├── ViewmodelRenderer.js       # Procedural 3D viewmodels for the chosen single weapon + recoil spring
-        ├── PostProcessingPass.js      # Bayer 4x4 dither, 15-bit quantize, FOV warp, chromatic aberration
-        └── HudAndAltarUI.js           # Pre-run Loadout Selector (Character + Single Weapon + Danger 0-5) & Blood Altar UI
+├── project.godot                      # Godot 4.3 config (Nearest filtering, 120Hz physics, input map)
+├── run_native_game.bat                # One-click native Windows (.exe) launcher
+├── tools/
+│   └── build_retro_assets.py          # Generates 64x64/128x128 pixel textures, Quake-style .obj 3D models & .wav SFX
+├── assets/
+│   ├── textures/                      # 64x64 & 128x128 Nearest-filtered PNGs (gothic_brick, wet_stone, rotten_wood, etc.)
+│   ├── models/                        # Low-poly 3D .obj models (ghoul.obj, cultist.obj, stalker.obj, inquisitor.obj, weapons, arches, torches)
+│   └── audio/                         # Layered retro .wav SFX (sword_slash, scythe_reap, stake_impact, gunshot, ghoul_groan, etc.)
+├── scenes/
+│   └── MainCatacomb.tscn              # Main 3D Gothic Catacomb & Cathedral scene
+└── scripts/
+    ├── GameMain.gd                    # Root orchestrator, wave loop, object pools, HUD & Blood Altar wiring
+    ├── DataCatalog.gd                 # Characters, Single-Weapon defs (with melee arcs/sweet-spots), Perks, Danger 0-5
+    ├── CatacombArenaBuilder.gd        # Modular Gothic Catacomb & Cathedral builder (arches, pillars, torches, crimson fog)
+    ├── PlayerController.gd            # CharacterBody3D 120Hz bhop, slide, wall-run, mantle, arced melee & projectile parry
+    ├── EnemyActor.gd                  # 3D enemy actors (Catacomb Ghoul, Blood Cultist, Crypt Nightstalker, Inquisitor, Executioner)
+    └── RetroPostFX.gdshader           # Optional screen-space PSX dither & vignette shader
 ```
 
 ---
