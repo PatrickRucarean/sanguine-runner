@@ -252,13 +252,13 @@ When in `AIR` or `WALL_RUN` with forward input (`W` held):
 | Jump Impulse Velocity | $v_{\text{jump}}$ | $10.5\text{ m/s}$ | Apex height $\approx 1.97\text{ m}$ |
 | Coyote Time Window | $t_{\text{coyote}}$ | $0.12\text{ s}$ | $14$ physics ticks after leaving ground |
 | Jump Input Buffer | $t_{\text{buffer}}$ | $0.12\text{ s}$ | Queues jump before ground contact |
-| Base Run Speed | $v_{\text{run}}$ | $12.5\text{ m/s}$ | Fast base boomer-shooter pace |
-| Ground Acceleration | $a_{\text{ground}}$ | $14.0\text{ s}^{-1}$ | Reaches full speed in $\sim 70\text{ ms}$ |
+| Base Run Speed | $v_{\text{run}}$ | $9.4\text{ m/s}$ | **Deliberate & Heavy (-25% baseline):** Momentum, ramp slides, & wall-running are the primary ways to reach $18–28+\text{ m/s}$ |
+| Ground Acceleration | $a_{\text{ground}}$ | $14.0\text{ s}^{-1}$ | Reaches base run speed crisply |
 | Ground Friction | $\mu_{\text{ground}}$ | $8.5\text{ s}^{-1}$ | Zeroes out in `< 100 ms` with $v_{\text{stop}} = 4.0\text{ m/s}$ |
-| Slide Initial Impulse | $I_{\text{slide}}$ | $+4.5\text{ m/s}$ | Added to current horizontal speed |
-| Slide Friction | $\mu_{\text{slide}}$ | $1.2\text{ s}^{-1}$ | Allows long, controllable slides |
-| Wall-Run Min Speed | $v_{\text{wall, min}}$ | $7.0\text{ m/s}$ | Prevents awkward stationary wall-sticking |
-| Max Step-Up Height | $h_{\text{step}}$ | $0.45\text{ m}$ | Smoothly climbs stairs & debris without losing speed |
+| Slide Initial Impulse | $I_{\text{slide}}$ | $+5.2\text{ m/s}$ | Primary burst + downhill ramp acceleration |
+| Slide Friction | $\mu_{\text{slide}}$ | $1.1\text{ s}^{-1}$ | Allows long, controllable slides with visible 3D boots |
+| Wall-Run Min Speed | $v_{\text{wall, min}}$ | $6.5\text{ m/s}$ | Chaining wall-runs across raised stone balconies builds high speed |
+| Max Step-Up Height | $h_{\text{step}}$ | $0.45\text{ m}$ | Smoothly climbs stairs & crypt steps |
 
 ---
 
@@ -377,14 +377,19 @@ export interface MeleeGeometryConfig {
 | **Alucard Sword** | **$2.5\text{ m}$** (Medium) | **$120^\circ$** (Wide Sweep) | `0.04s / 0.08s / 0.13s` | **Fluid Aristocratic Broadsword:** High-cadence sweeping cleaves, passive life siphon, and **Frontal Projectile Parry / Deflection** on `RMB`. |
 | **Occult Scythe** | **$4.0\text{ m}$** (Massive) | **$160^\circ$** (Reaper Arc) | `0.11s / 0.12s / 0.22s` | **Positional Sweet-Spot Harvester:** Outer blade tip ($2.6\text{ m}–4.0\text{ m}$) deals **$3.0\times$ DMG + Heavy Bleed**; inner shaft ($<2.6\text{ m}$) deals weak damage + knockback push into the Sweet-Spot ring. |
 
-##### 3. **Stake & Hammer ("Van Helsing's Crucifixion Mallet")**
-* **Geometry & Timing:** Short `reach = 1.3m`, focused `horizontal_arc = 55°`, heavy impact timing (`0.07s` windup, `0.06s` active crush, `0.20s` recovery).
-* **LMB (Crucifixion Strike):**
-  * Drives an iron-shod ash stake with a brutalist sledgehammer. Deals $85\text{ Base DMG}$ and a massive **$115\text{ Poise DMG}$** (instantly staggering almost any non-boss enemy in 1 hit).
-  * **Armor Shatter:** Ignores $100\%$ of enemy armor/shields (instantly splinters *Iron Inquisitor* tower shields) and deals $+75\%$ bonus damage to armored/staggered targets.
-  * **Point-Blank Blood Detonation:** Every kill or Stagger-Break triggers a violent **$3.0\text{ m}$ Point-Blank Blood Explosion** ($55\text{ AoE DMG}$ + arterial mist), rewarding hyper-aggressive face-tanking and slide-ins.
-* **RMB (Impaling Stake-Drive Lunge):**
-  * Lunges $6.5\text{ m}$ forward (`0.11s`), driving the stake straight through the primary target and launching them backward as an impaled projectile that pins into walls or detonates on impact for $180\text{ AoE DMG}$ (`4-frame` hitstop + `+5.5°` FOV punch).
+##### 3. **Stake & Hammer ("Expunge / Crucifixion Mallet" — Kalista / Twitch Hybrid)**
+* **First-Person Dual Rig:** Left vampiric cuffed hand holds iron-shod ash stakes ready to hurl; Right hand wields the heavy octagonal **Occult War-Hammer**.
+* **LMB (Throw Stake — Ranged Harass & Impale Tag):**
+  * Hurls a fast iron vampire stake projectile ($v = 46\text{ m/s}$).
+  * **On Hit:** Deals moderate kinetic damage ($38\text{ Base DMG}$), **slows the enemy by $25\%$ per stake** (stacking up to **$50\%$ max slow**), triggers a crisp **3-frame micro-hitstop**, and **visually impales a 3D low-poly stake model (`stake_projectile.obj`) directly into the enemy's body**!
+  * Stacks up to **5 impaled stakes per target** (with an overhead crimson stake-counter badge).
+* **RMB (Occult War-Hammer — The Execution / Expunge Pop):**
+  * Heavy overhead melee smash (`0.14s` wind-up) with violent camera kick (`+7.5°` FOV punch + heavy directional trauma shake + **5-frame hitstop**).
+  * **AoE Stake Expunge Detonation:** Striking a tagged enemy—or smashing the crypt floor near tagged enemies ($R_{\text{expunge}} = 9.5\text{ m}$)—**violently detonates all embedded stakes across all nearby targets in a simultaneous AoE Blood Explosion!**
+  * **Exponential Damage & Siphon per Stake ($n \in [1, 5]$):**
+    $$\text{DMG}_{\text{expunge}}(n) = 75 \cdot n \cdot (1.35)^{n - 1} \cdot (1 + \sum \text{DMG\%})$$
+    *(1 stake = $75$, 3 stakes = $410$, 5 stakes = **$1,245\text{ AoE Blood Explosion DMG}$**!)*
+  * Each detonated stake restores **+6 HP** and spawns **bonus Vitae Blood Orbs**.
 
 ##### 4. **Alucard Sword ("Heirloom Broadsword / Crissaegrim")**
 * **Geometry & Timing:** Balanced `reach = 2.5m`, wide `horizontal_arc = 120°`, fluid high-cadence timing (`0.04s` windup, `0.08s` active sweep, `0.13s` recovery = $4.0\text{ swings/sec}$).
@@ -494,12 +499,14 @@ Every enemy uses an articulated low-poly 3D `.obj` model (`assets/models/`) with
 | **Mid Bruiser** | **Iron Inquisitor** (`inquisitor.obj`) | $5$ | $220$ | $4.8\text{ m/s}$ | Armored cathedral knight carrying a riveted iron tower shield. Vulnerable to **Stake & Hammer Armor Shatter**, **Jackal AP rounds**, **Occult Scythe** wide sweet-spot reaps, or **Slide Blood-Kicks**. |
 | **Boss / Heavy** | **Cathedral Executioner** (`executioner.obj`) | $8$ | $680$ | $5.2\text{ m/s}$ | Towering horned executioner with a massive great-axe. Fires sweeping arcs of sliceable blood-fire projectiles and slams the floor. |
 
-### 4.4 Enemy Stat Scaling Per Wave
-Enemy health and damage scale more gradually than spawn density through Wave 12 so the player feels their multi-kill power fantasy, then ramp exponentially in Wave 15+ Endless mode:
+### 4.4 Compounded Enemy Wave Scaling (+20% Max HP & +3% Speed Per Wave)
+Enemy Max HP compounds by **$+20\%$ per wave** and base movement speed compounds by **$+3\%$ per wave** (while Waves 1–3 remain slow fodder ghouls, and later waves spawn larger armored brutes and fast wall-leaping stalkers):
 
-$$\text{HP}_{\text{enemy}}(w, d) = \text{HP}_{\text{base}} \cdot M_{\text{HP}}(d) \cdot \left(1 + 0.14(w - 1) + 0.018(w - 1)^2\right) \cdot \left(1.12\right)^{\max(0, w - 15)}$$
+$$\text{HP}_{\text{enemy}}(w, d) = \text{HP}_{\text{base}} \cdot M_{\text{HP}}(d) \cdot (1.20)^{w - 1}$$
 
-$$\text{DMG}_{\text{enemy}}(w, d) = \text{DMG}_{\text{base}} \cdot M_{\text{DMG}}(d) \cdot \left(1 + 0.08(w - 1)\right)$$
+$$\text{Speed}_{\text{enemy}}(w) = \text{Speed}_{\text{base}} \cdot (1.03)^{w - 1}$$
+
+$$\text{DMG}_{\text{enemy}}(w, d) = \text{DMG}_{\text{base}} \cdot M_{\text{DMG}}(d) \cdot (1.08)^{w - 1}$$
 
 where $d \in \{0, 1, 2, 3, 4, 5\}$ is the selected **Danger / Corruption Tier**.
 
@@ -872,29 +879,26 @@ Rendered via a single consolidated fullscreen fragment pass (`SanguineRetroPass.
 
 ---
 
-### 6.3 Game Feel & "Juice" (Zero-Active-Skill Brutality)
-Because `SANGUINE_RUNNER` intentionally eschews hotkey skill bars (`1-2-3-4`), every primary/secondary weapon action and physical impact must feel heavy, violent, and visceral:
+### 6.3 First-Person Body Rig, Game Feel ("Juice") & Gothic UI Architecture
+Because `SANGUINE_RUNNER` intentionally eschews hotkey skill bars (`1-2-3-4`), every weapon action, physical impact, and UI transition must feel heavy, violent, and immersive:
 
-1. **Directional Camera Shake, Micro-Hitstop & FOV Punch:**
+1. **First-Person Body / Viewmodel Rig (True Immersion):**
+   - **Visible 3D Vampiric Hands & Cuffs (`vampiric_hand.obj`):** Articulated low-poly 3D hands with dark leather gauntlets and crimson-gold vampiric cuffs visibly grip and animate with the active weapon.
+   - **Visible 3D Boots on Slide & Kick (`vampiric_boot.obj`):** Entering a Ground Slide (`Shift`/`Ctrl`/`C`) or executing a **Slide Blood-Kick (`F`)** extends 3D iron-shod gothic boots into the lower field of view.
+2. **Directional Camera Shake, 3–5 Frame Micro-Hitstop & FOV Punch:**
    - **Micro-Hitstop (Freeze Frames):**
-     - Standard Melee / Heavy Headshot: `2 frames` ($16.6\text{ ms}$) simulation pause on the weapon viewmodel and physics step while camera shake continues.
-     - Critical Melee Cleave / *Occult Scythe* Sweet-Spot Hit / *Stake & Hammer* Armor Shatter / Point-Blank Shotgun / Execution / *Alucard Sword* Parry: `3–4 frames` ($25\text{ ms}–33\text{ ms}$) freeze frame + subtle crimson screen-edge flash.
-   - **Discrete FOV Punch:**
-     - Heavy shots (*Jackal & Casull Twin Cross-Burst*, *Shotgun Gore-Slug*, *Stake & Hammer Impale*, *Occult Scythe Reap*) inject an immediate **`+3.5°` to `+6.5°` FOV Punch** on top of velocity FOV, decaying back over $110\text{ ms}$ via a critically damped spring.
-   - **Directional Trauma Shake:**
-     - Combines a directional recoil/impact jolt along the hit vector with quadratic trauma decay ($\text{ShakeAngle} = \text{MaxAngle} \cdot \text{Trauma}^2 \cdot \text{Noise}(t)$).
-2. **Audio Layering & Random Pitch Variation (`AudioManager`):**
-   - Sound is 50% of boomer-shooter impact. Every sound effect is synthesized/layered from 3 components (*Low Sub-Bass Punch* + *Mid Mechanical/Flesh Transient* + *High Metallic/Gothic Tail*).
-   - **Mandatory Pitch Variation ($\pm 5\%$):** Every gunshot, sword slash, scythe reap, stake impact, blood splat, orb pickup, and footstep applies a randomized frequency/playback multiplier $p_{\text{rand}} \sim \mathcal{U}(0.95, 1.05)$ so high-fire-rate Wave 15+ barrages feel organic and never cause ear fatigue.
-3. **Dismemberment & Low-Poly Gibs (*Hellsing / Alucard* Gore):**
-   - Enemies killed by Critical Hits, Headshots, *Stake & Hammer* Impales, *Occult Scythe* Sweet-Spot Reaps, Slide Blood-Kicks, or Point-Blank Shotgun blasts do not merely fall over—they **violently rupture into 6–12 low-poly crimson gib chunks** (torso shards, skulls, limbs) and arterial mist.
-   - Gibs bounce off floor/walls with fast ballistic gravity and **rapidly shrink and despawn over `1.2s–1.8s`**, delivering maximum visual brutality with zero lingering scene clutter.
-4. **Minimalist Diegetic HUD:**
-   - Center crosshair integrates **2 thin concentric gothic arcs**:
-     - Left Arc: **Blood / Sanguine Gauge** (for RMB Alt-Fire).
-     - Right Arc: **Active Reload / Sweet-Spot Range Indicator**.
-   - Bottom-Left: Brutalist crimson numeric readout for **HP (`100 // 100`)**, **Speedometer (`24.8 m/s`)**, and **Single Equipped Weapon / Ammo**.
-   - Top-Center: **Wave Countdown Timer**, **Danger Tier Badge (`D0–D5`)**, & **Vitae Level Bar**.
+     - Standard Melee Cleave / Thrown Stake Impale: `3 frames` ($25\text{ ms}$) simulation freeze frame.
+     - Critical Melee Cleave / *Occult Scythe* Sweet-Spot Hit / *Stake & Hammer* Expunge Detonation / Point-Blank Shotgun / Execution / *Alucard Sword* Parry: `4–5 frames` ($33\text{ ms}–42\text{ ms}$) freeze frame + crimson screen-edge flash.
+   - **Discrete FOV Punch & Swing Tilt:**
+     - Melee swings inject subtle directional camera roll tilt ($\pm 2.5^\circ$); heavy blasts (*Shotgun Gore-Slug*, *Occult War-Hammer Expunge Detonation*) inject a violent **`+5.5°` to `+8.0°` FOV Punch** and upward/directional camera kick.
+3. **Handcrafted 3-Tier Gothic Cathedral / Crypt Arena:**
+   - **Tier 0 — Central Sacrificial Blood Pit (`y = -2.2m`):** Sunken octagonal slaughter pit with a central sacrificial altar, blood chalices (`blood_chalice.obj`), and 4 wide stone staircases ascending to the nave.
+   - **Tier 1 — Main Crypt Nave & Connecting Vaulted Corridors (`y = 0.0m`):** Flanked by 8 fluted gothic pillars, pointed rib-vault arches, flickering wall torches, and outer vaulted side corridors.
+   - **Tier 2 — Raised Stone Balconies (`y = 3.8m`):** Connected by sloped stone ramps (for downhill slide-boosting) and inner wall-run ledges overlooking the sacrificial pit.
+4. **Gothic UI, Ornate Cards, Pause Menu & ARAM Mayhem Perk Reveal:**
+   - **Dark Gothic Main Menu & Pause Settings (`ESC`):** Crimson-bordered stone panels with functional **Master / SFX / Music Volume sliders**, **Mouse Sensitivity slider**, and **Fullscreen toggle**.
+   - **Ornate Character & Weapon Cards:** Custom-rendered `48x48` silhouette icons (`TextureRect`) and color-coded stat badges replacing raw text buttons.
+   - **Perk Drafting Polish:** Top **XP / Vitae Progress Bar**, color-coded rarities (`Common`: Iron Grey `#7A7D82`, `Rare`: Blood Ruby `#E61428`, `Epic`: Abyssal Violet `#9D1CFF`, `Eldritch`: Gilded Gold `#FFD700`), and **Animated Crimson Particle + Screen Flash Reveal** when rolling or drafting `EPIC` / `ELDRITCH` cards.
 
 ---
 

@@ -132,9 +132,10 @@ static func load_obj_mesh(rel_path: String, material: Material = null) -> ArrayM
 	return mesh
 
 
-static func load_wav(rel_path: String) -> AudioStreamWAV:
-	if _wav_cache.has(rel_path):
-		return _wav_cache[rel_path]
+static func load_wav(rel_path: String, looped: bool = false) -> AudioStreamWAV:
+	var cache_key := rel_path + ("|loop" if looped else "")
+	if _wav_cache.has(cache_key):
+		return _wav_cache[cache_key]
 	var abs_path := ProjectSettings.globalize_path(rel_path)
 	var file := FileAccess.open(abs_path, FileAccess.READ)
 	if file == null:
@@ -147,5 +148,58 @@ static func load_wav(rel_path: String) -> AudioStreamWAV:
 	stream.mix_rate = 22050
 	stream.stereo = false
 	stream.data = bytes.slice(44)
-	_wav_cache[rel_path] = stream
+	if looped:
+		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		stream.loop_begin = 0
+		stream.loop_end = stream.data.size() / 2
+	_wav_cache[cache_key] = stream
 	return stream
+
+
+static func make_silhouette_icon(icon_id: String, fg_col: Color) -> Texture2D:
+	var key := "icon|" + icon_id + "|" + fg_col.to_html()
+	if _tex_cache.has(key):
+		return _tex_cache[key]
+	var img := Image.create(48, 48, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.05, 0.02, 0.03, 1.0))
+	var border_col := fg_col.darkened(0.35)
+	for i in range(48):
+		img.set_pixel(i, 0, border_col)
+		img.set_pixel(i, 47, border_col)
+		img.set_pixel(0, i, border_col)
+		img.set_pixel(47, i, border_col)
+
+	for y in range(6, 42):
+		for x in range(6, 42):
+			var dx := float(x - 24)
+			var dy := float(y - 24)
+			var draw := false
+			match icon_id:
+				"tepes_aristocrat": # Alucard Wide-Brim Hat & Pentagram Eye
+					draw = (absf(dy + 6.0) < 3.0 and absf(dx) < 16.0) or (absf(dx) < 8.0 and dy > -14.0 and dy < 12.0)
+				"nosferatu_leech": # Fanged Skull & Blood Chalice Drop
+					draw = (dx * dx + (dy + 3.0) * (dy + 3.0) < 95.0) or (absf(dx) in [3.0, 4.0] and dy > 4.0 and dy < 14.0)
+				"nightrunner_wraith": # Bat Wings Silhouette
+					draw = (absf(dy) < 12.0 - absf(dx) * 0.45 and absf(dx) < 16.0)
+				"cathedral_juggernaut": # Great Helm Cross Visor
+					draw = (absf(dx) < 11.0 and absf(dy) < 14.0) and not (absf(dx) < 2.0 or absf(dy + 2.0) < 2.0)
+				"alucard_sword": # Diagonal Broadsword & Swept Crossguard
+					draw = (absf(dx + dy) < 2.4 and absf(dx - dy) < 22.0) or (absf(dx - dy + 8.0) < 2.2 and absf(dx + dy) < 9.0)
+				"occult_scythe": # Sweeping Crescent Reaper Blade
+					var r := sqrt(dx * dx + (dy + 4.0) * (dy + 4.0))
+					draw = (r > 9.0 and r < 15.0 and dy < 2.0) or (absf(dx - 6.0) < 2.0 and dy > -10.0)
+				"stake_and_hammer": # Crossed Iron Stake & War-Hammer
+					draw = (absf(dx - dy) < 2.5) or (absf(dx + dy) < 2.5) or (dx > 4.0 and dy < -4.0 and absf(dx + dy) < 8.0)
+				"jackal_and_casull": # Dual Crossed 13mm Handcannons
+					draw = (absf(dy + 4.0) < 3.5 and absf(dx) < 14.0) or (absf(dx + 8.0) < 3.0 and dy > -4.0 and dy < 12.0)
+				"trench_shotgun": # Double-Barrel Coach Gun Silhouette
+					draw = (absf(dy + 2.0) < 3.2 and dx > -15.0 and dx < 14.0) or (dx > 4.0 and dy > 0.0 and dy < 10.0 and absf(dx - dy - 4.0) < 3.5)
+				_:
+					draw = (absf(dx) + absf(dy) < 14.0)
+			if draw:
+				img.set_pixel(x, y, fg_col)
+
+	var tex := ImageTexture.create_from_image(img)
+	_tex_cache[key] = tex
+	return tex
+

@@ -534,6 +534,46 @@ def build_models():
     m.add_tapered_limb((0, 0.38, -0.30), (0, 0.56, -0.35), 0.09, 0.09, 0.12, 0.12, sides=6, uv_region="BR")
     m.save(os.path.join(MOD_DIR, "wall_torch.obj"))
 
+    # 12. VAMPIRIC HAND & LEATHER CUFF (vampiric_hand.obj)
+    m = ObjMeshBuilder()
+    # Forearm dark leather sleeve + crimson/gold vampiric cuff
+    m.add_tapered_limb((0, -0.14, 0.28), (0, -0.04, 0.06), 0.058, 0.052, 0.048, 0.044, sides=6, uv_region="BL")
+    m.add_tapered_limb((0, -0.06, 0.12), (0, -0.03, 0.05), 0.056, 0.052, 0.054, 0.050, sides=6, uv_region="BR")
+    #Gloved palm & curled fingers
+    m.add_box((0, -0.02, -0.01), (0.085, 0.048, 0.095), uv_region="TL")
+    for fx in (-0.028, 0.0, 0.028):
+        m.add_tapered_limb((fx, -0.01, -0.05), (fx, 0.025, -0.09), 0.014, 0.014, 0.010, 0.010, sides=4, uv_region="TR")
+    m.save(os.path.join(MOD_DIR, "vampiric_hand.obj"))
+
+    # 13. VAMPIRIC SLIDE/KICK BOOT (vampiric_boot.obj)
+    m = ObjMeshBuilder()
+    m.add_tapered_limb((0, 0.32, 0.12), (0, 0.05, 0.0), 0.075, 0.075, 0.062, 0.068, sides=6, uv_region="BL")  # Shin greave
+    m.add_box((0, 0.0, -0.12), (0.13, 0.10, 0.32), uv_region="TL")  # Boot sole & steel toe
+    m.add_box((0, 0.02, -0.27), (0.11, 0.07, 0.06), uv_region="BR")  # Crimson-iron toe spikeplate
+    m.save(os.path.join(MOD_DIR, "vampiric_boot.obj"))
+
+    # 14. IMPALING VAMPIRE STAKE PROJECTILE (stake_projectile.obj)
+    m = ObjMeshBuilder()
+    m.add_tapered_limb((0, 0, 0.28), (0, 0, -0.10), 0.034, 0.034, 0.028, 0.028, sides=6, uv_region="BL")
+    m.add_tapered_limb((0, 0, 0.32), (0, 0, 0.27), 0.044, 0.044, 0.036, 0.036, sides=6, uv_region="TR")  # Iron striking cap
+    m.add_tapered_limb((0, 0, -0.10), (0, 0, -0.46), 0.028, 0.028, 0.002, 0.002, sides=6, uv_region="BR")  # Bloodied sharp tip
+    m.save(os.path.join(MOD_DIR, "stake_projectile.obj"))
+
+    # 15. OCCULT WAR-HAMMER (war_hammer.obj)
+    m = ObjMeshBuilder()
+    m.add_tapered_limb((0, -0.34, 0.16), (0, 0.24, -0.46), 0.026, 0.026, 0.030, 0.030, sides=6, uv_region="BL")
+    m.add_tapered_limb((-0.16, 0.22, -0.44), (0.16, 0.22, -0.44), 0.095, 0.095, 0.095, 0.095, sides=8, uv_region="TL")
+    m.add_box((0, 0.22, -0.44), (0.35, 0.06, 0.06), uv_region="BR")
+    m.save(os.path.join(MOD_DIR, "war_hammer.obj"))
+
+    # 16. GOTHIC BLOOD CHALICE PROP (blood_chalice.obj)
+    m = ObjMeshBuilder()
+    m.add_tapered_limb((0, 0.0, 0), (0, 0.22, 0), 0.36, 0.36, 0.20, 0.20, sides=8, uv_region="TL")
+    m.add_tapered_limb((0, 0.22, 0), (0, 0.78, 0), 0.12, 0.12, 0.14, 0.14, sides=8, uv_region="TR")
+    m.add_tapered_limb((0, 0.78, 0), (0, 1.22, 0), 0.16, 0.16, 0.44, 0.44, sides=8, uv_region="TR")
+    m.add_tapered_limb((0, 1.15, 0), (0, 1.24, 0), 0.38, 0.38, 0.38, 0.38, sides=8, uv_region="BR")  # Glowing blood pool inside cup
+    m.save(os.path.join(MOD_DIR, "blood_chalice.obj"))
+
 
 # ============================================================================
 # 3. LAYERED RETRO BOOMER-SHOOTER .WAV AUDIO GENERATOR
@@ -625,6 +665,27 @@ def build_audio():
         "orb_pickup.wav",
         0.16,
         lambda t, d: math.sin(2 * math.pi * (660 + t * 1200) * t) * math.exp(-t * 18.0) * 0.40,
+    )
+    # 9. Occult War-Hammer Expunge Detonation (earth-shattering sub drop + crimson blood burst)
+    write_wav(
+        "hammer_expunge.wav",
+        0.48,
+        lambda t, d: (
+            math.sin(2 * math.pi * (160 * math.exp(-t * 10.0) + 34) * t) * math.exp(-t * 6.5) * 0.85
+            + math.sin(2 * math.pi * 420 * t) * math.exp(-t * 14.0) * 0.35
+            + random.uniform(-1, 1) * math.exp(-t * 11.0) * 0.55
+        ),
+    )
+    # 10. Dark Gothic Catacomb Organ Ambient Loop (for Music Channel)
+    write_wav(
+        "dark_organ_drone.wav",
+        4.0,
+        lambda t, d: (
+            0.22 * math.sin(2 * math.pi * 55.0 * t)
+            + 0.16 * math.sin(2 * math.pi * 82.41 * t)
+            + 0.12 * math.sin(2 * math.pi * 110.0 * t)
+            + 0.08 * math.sin(2 * math.pi * 130.81 * t)
+        ) * (0.85 + 0.15 * math.sin(2 * math.pi * 0.5 * t)),
     )
 
 
