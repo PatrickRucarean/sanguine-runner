@@ -1,7 +1,7 @@
 /**
  * SANGUINE_RUNNER — Low-Latency Keyboard & Pointer-Lock Input Manager
- * Buffers edge-triggered presses between render frames and 120Hz physics ticks
- * so sub-frame jump/slide inputs are never dropped.
+ * Buffers movement and combat actions (LMB, RMB, F Quick Melee, R Active Reload, Q/E/Wheel Swap)
+ * between render frames and 120Hz physics ticks.
  */
 
 export class InputManager {
@@ -16,11 +16,17 @@ export class InputManager {
     this.onHotkey = onHotkey;
 
     this.keysDown = new Set();
+    this.mouseButtonsDown = new Set();
     this.isPointerLocked = false;
 
-    // Buffered edge-triggered actions consumed by the next physics tick
+    // Buffered edge-triggered movement & combat actions consumed by the next physics tick
     this._jumpPressedBuffer = false;
     this._slidePressedBuffer = false;
+    this._primaryPressedBuffer = false;
+    this._altPressedBuffer = false;
+    this._quickMeleePressedBuffer = false;
+    this._reloadPressedBuffer = false;
+    this._swapPressedBuffer = false;
 
     this._bindEvents();
   }
@@ -44,6 +50,15 @@ export class InputManager {
         this._slidePressedBuffer = true;
         if (this.isPointerLocked) e.preventDefault();
       }
+      if (code === 'KeyF') {
+        this._quickMeleePressedBuffer = true;
+      }
+      if (code === 'KeyR') {
+        this._reloadPressedBuffer = true;
+      }
+      if (code === 'KeyQ' || code === 'KeyE') {
+        this._swapPressedBuffer = true;
+      }
 
       if (this.onHotkey) {
         this.onHotkey(code);
@@ -54,10 +69,34 @@ export class InputManager {
       this.keysDown.delete(e.code);
     });
 
+    window.addEventListener('mousedown', (e) => {
+      if (!this.isPointerLocked) return;
+      this.mouseButtonsDown.add(e.button);
+      if (e.button === 0) {
+        this._primaryPressedBuffer = true;
+      } else if (e.button === 2) {
+        this._altPressedBuffer = true;
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      this.mouseButtonsDown.delete(e.button);
+    });
+
+    window.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
+
     window.addEventListener('blur', () => {
       this.keysDown.clear();
+      this.mouseButtonsDown.clear();
       this._jumpPressedBuffer = false;
       this._slidePressedBuffer = false;
+      this._primaryPressedBuffer = false;
+      this._altPressedBuffer = false;
+      this._quickMeleePressedBuffer = false;
+      this._reloadPressedBuffer = false;
+      this._swapPressedBuffer = false;
     });
 
     document.addEventListener('pointerlockchange', () => {
@@ -68,19 +107,17 @@ export class InputManager {
       if (!this.isPointerLocked) return;
       const dx = e.movementX || 0;
       const dy = e.movementY || 0;
-      // Reject rare browser pointer-lock spike artifacts (>350px in 1 event)
       if (Math.abs(dx) < 350 && Math.abs(dy) < 350) {
         if (this.onMouseMove) this.onMouseMove(dx, dy);
       }
     });
 
-    // Allow Mouse Wheel Down/Up to also trigger Jump for classic boomer-shooter bhop enthusiasts!
     window.addEventListener(
       'wheel',
       (e) => {
         if (!this.isPointerLocked) return;
         if (Math.abs(e.deltaY) > 0) {
-          this._jumpPressedBuffer = true;
+          this._swapPressedBuffer = true;
         }
       },
       { passive: true }
@@ -94,7 +131,7 @@ export class InputManager {
   }
 
   /**
-   * Samples current input state and consumes buffered edge triggers for one 120Hz physics tick.
+   * Samples current movement & combat input state for one 120Hz physics tick.
    */
   sampleTickInput() {
     const w = this.keysDown.has('KeyW') || this.keysDown.has('ArrowUp') ? 1 : 0;
@@ -109,22 +146,33 @@ export class InputManager {
       this.keysDown.has('ControlLeft') ||
       this.keysDown.has('KeyC');
     const walkHeld = this.keysDown.has('AltLeft');
+    const primaryHeld = this.mouseButtonsDown.has(0);
 
-    const jumpPressed = this._jumpPressedBuffer;
-    const slidePressed = this._slidePressedBuffer;
-
-    // Clear one-shot buffers after consumption
-    this._jumpPressedBuffer = false;
-    this._slidePressedBuffer = false;
-
-    return {
+    const out = {
       moveForward: w - s,
       moveRight: d - a,
-      jumpPressed,
+      jumpPressed: this._jumpPressedBuffer,
       jumpHeld,
-      slidePressed,
+      slidePressed: this._slidePressedBuffer,
       slideHeld,
       walkHeld,
+      primaryPressed: this._primaryPressedBuffer,
+      primaryHeld,
+      altPressed: this._altPressedBuffer,
+      quickMeleePressed: this._quickMeleePressedBuffer,
+      reloadPressed: this._reloadPressedBuffer,
+      swapPressed: this._swapPressedBuffer,
     };
+
+    // Clear one-shot edge buffers after consumption
+    this._jumpPressedBuffer = false;
+    this._slidePressedBuffer = false;
+    this._primaryPressedBuffer = false;
+    this._altPressedBuffer = false;
+    this._quickMeleePressedBuffer = false;
+    this._reloadPressedBuffer = false;
+    this._swapPressedBuffer = false;
+
+    return out;
   }
 }

@@ -749,18 +749,50 @@ Rendered via a single consolidated fullscreen fragment pass (`SanguineRetroPass.
 
 ---
 
-### 6.3 Game Feel, Hitstop, & Brutalist Diegetic HUD
-- **Micro-Hitstop Frames:**
-  - Standard Melee / Shotgun Point-Blank: `2 frames` ($16\text{ ms}$) simulation pause on weapon/target while camera shake continues.
-  - Headshot Obliteration / Greatsword Projectile Parry: `5 frames` ($41\text{ ms}$) freeze + screen-edge crimson inversion flash.
-- **Trauma-Based Screen Shake:**
-  - Uses quadratic/cubic trauma decay ($\text{ShakeAngle} = \text{MaxAngle} \cdot \text{Trauma}^2 \cdot \text{PerlinNoise}(t)$) so small hits feel tactile without jarring the crosshair, and heavy explosions feel thunderous.
-- **Minimalist Diegetic HUD:**
-  - Center crosshair integrates **2 thin concentric gothic arcs**:
-    - Left Arc: **Blood / Sanguine Gauge** (for RMB Alt-Fire).
-    - Right Arc: **Active Reload / Dash Reset Indicator**.
-  - Bottom-Left: Brutalist crimson numeric readout for **HP (`100 // 100`)** and **Speedometer (`24.8 m/s`)**.
-  - Top-Center: **Wave Countdown Timer** & **Vitae Level Bar**.
+### 6.3 Game Feel & "Juice" (Zero-Active-Skill Brutality)
+Because `SANGUINE_RUNNER` intentionally eschews hotkey skill bars (`1-2-3-4`), every primary/secondary weapon action and physical impact must feel heavy, violent, and visceral:
+
+1. **Directional Camera Shake, Micro-Hitstop & FOV Punch:**
+   - **Micro-Hitstop (Freeze Frames):**
+     - Standard Melee / Heavy Headshot: `2 frames` ($16.6\text{ ms}$) simulation pause on the weapon viewmodel and physics step while camera shake continues.
+     - Critical Katana Slash / Point-Blank Shotgun / Execution / Greatsword Parry: `3–4 frames` ($25\text{ ms}–33\text{ ms}$) freeze frame + subtle crimson screen-edge flash.
+   - **Discrete FOV Punch:**
+     - Heavy shots (*Jackal & Casull Twin Cross-Burst*, *Shotgun Gore-Slug*, *Katana Blood-Dash*) inject an immediate **`+3.5°` to `+6.5°` FOV Punch** on top of velocity FOV, decaying back over $110\text{ ms}$ via a critically damped spring.
+   - **Directional Trauma Shake:**
+     - Combines a directional recoil/impact jolt along the hit vector with quadratic trauma decay ($\text{ShakeAngle} = \text{MaxAngle} \cdot \text{Trauma}^2 \cdot \text{Noise}(t)$).
+2. **Audio Layering & Random Pitch Variation (`AudioManager`):**
+   - Sound is 50% of boomer-shooter impact. Every sound effect is synthesized/layered from 3 components (*Low Sub-Bass Punch* + *Mid Mechanical/Flesh Transient* + *High Metallic/Gothic Tail*).
+   - **Mandatory Pitch Variation ($\pm 5\%$):** Every gunshot, sword slash, blood splat, orb pickup, and footstep applies a randomized frequency/playback multiplier $p_{\text{rand}} \sim \mathcal{U}(0.95, 1.05)$ so high-fire-rate Wave 15+ barrages feel organic and never cause ear fatigue.
+3. **Dismemberment & Low-Poly Gibs (*Hellsing / Alucard* Gore):**
+   - Enemies killed by Critical Hits, Headshots, Katana Blood-Dashes, Slide Blood-Kicks, or Point-Blank Shotgun blasts do not merely fall over—they **violently rupture into 6–12 low-poly crimson gib chunks** (torso shards, skulls, limbs) and arterial mist.
+   - Gibs bounce off floor/walls with fast ballistic gravity and **rapidly shrink and despawn over `1.2s–1.8s`**, delivering maximum visual brutality with zero lingering scene clutter.
+4. **Minimalist Diegetic HUD:**
+   - Center crosshair integrates **2 thin concentric gothic arcs**:
+     - Left Arc: **Blood / Sanguine Gauge** (for RMB Alt-Fire).
+     - Right Arc: **Active Reload / Dash Reset Indicator**.
+   - Bottom-Left: Brutalist crimson numeric readout for **HP (`100 // 100`)**, **Speedometer (`24.8 m/s`)**, and **Equipped Weapon / Ammo**.
+   - Top-Center: **Wave Countdown Timer** & **Vitae Level Bar**.
+
+---
+
+### 6.4 Anti-Lag Technical Scaling Architecture (Wave 15+ 120+ FPS Guarantee)
+
+To sustain a locked 120+ FPS when hundreds of projectiles, blood bursts, gibs, and swarm enemies fill the cathedral, three strict engineering rules are enforced from Phase 2 onward:
+
+1. **Mandatory Object Pooling (Zero Runtime `Instantiate` / `Destroy`):**
+   - Runtime allocation or scene-graph mutation (`new THREE.Mesh()`, `scene.add()`, `scene.remove()`, `document.createElement()`) during active combat is **strictly forbidden**.
+   - Every transient entity uses pre-allocated fixed-capacity **Ring-Buffer Object Pools** initialized at startup:
+     - `ProjectileAndTracerPool` (`THREE.InstancedMesh` / batched line segments)
+     - `GibsAndBloodPool` (`THREE.InstancedMesh` low-poly chunks + particles, `MAX_GIBS = 512`, `MAX_BLOOD_PARTICLES = 1024`)
+     - `BloodOrbPool` (`THREE.InstancedMesh`, `MAX_ORBS = 2048`)
+     - `DamageNumberPool` (Pre-allocated pooled HUD elements, `MAX_LABELS = 64`)
+2. **Spatial Partitioning & Interleaved Boid Flocking for Swarm AI:**
+   - Melee swarm enemies (*Thrall Husks*, *Nightstalkers*) **never** run heavy per-agent NavMesh/A* pathfinding every frame.
+   - Instead, each enemy computes a direct horizontal pursuit vector toward the player $\hat{\mathbf{d}}_{\text{toPlayer}}$ combined with a lightweight **2D Spatial Hash Grid Boid Separation vector** $\mathbf{s}_{\text{boid}}$.
+   - **Interleaved Tick Scheduling:** Separation queries against neighboring cells execute only once every 4 physics ticks per enemy (`enemyIndex % 4 === tickCounter % 4`), caching $\mathbf{s}_{\text{boid}}$ for the intervening 3 ticks while integrating velocity every tick. This reduces swarm AI CPU overhead by **$75\%$**.
+3. **Batched / Accumulating Floating Damage Numbers (`DamageNumberBatcher`):**
+   - To prevent 100 overlapping text nodes during rapid Katana combos, shotgun pellet hits, or high-frequency Bleed ticks, floating damage numbers are **batched per target (`targetId`)**:
+   - If target $E_i$ already has an active floating number spawned within the last **`350 ms`**, new damage is **added directly to the existing number** ($\text{DisplayedDMG} \leftarrow \text{DisplayedDMG} + \Delta\text{DMG}$), resetting its hold timer, bumping its font scale (`1.0x -> 1.45x`), and escalating its color (`Bone -> Crimson -> Occult Gold`) rather than spawning a duplicate label.
 
 ---
 
